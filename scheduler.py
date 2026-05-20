@@ -79,4 +79,5 @@ def scrape_all_companies():
         db.rollback()
         raise
     finally:
+        scraper.close()
         db.close()
