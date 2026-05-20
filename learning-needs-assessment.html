@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Learning Design Needs Assessment</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --brand:    #2563EB;
+      --brand-dk: #1D4ED8;
+      --accent:   #0EA5E9;
+      --surface:  #F8FAFC;
+      --card:     #FFFFFF;
+      --border:   #E2E8F0;
+      --text:     #1E293B;
+      --muted:    #64748B;
+      --success:  #059669;
+      --tag-bg:   #EFF6FF;
+      --tag-text: #1D4ED8;
+      --radius:   12px;
+      --shadow:   0 4px 24px rgba(0,0,0,.08);
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--surface);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem 4rem;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      max-width: 620px;
+      margin-bottom: 2.5rem;
+    }
+    header .eyebrow {
+      display: inline-block;
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--brand);
+      background: var(--tag-bg);
+      padding: .25rem .75rem;
+      border-radius: 99px;
+      margin-bottom: .75rem;
+    }
+    header h1 { font-size: 2rem; font-weight: 800; line-height: 1.2; margin-bottom: .5rem; }
+    header p  { color: var(--muted); font-size: 1.05rem; line-height: 1.6; }
+
+    /* ── Progress bar ── */
+    #progress-wrap {
+      width: 100%;
+      max-width: 620px;
+      margin-bottom: 1.5rem;
+    }
+    #progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: .8rem;
+      color: var(--muted);
+      margin-bottom: .4rem;
+    }
+    #progress-bar-bg {
+      height: 6px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    #progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--brand), var(--accent));
+      border-radius: 99px;
+      transition: width .4s ease;
+      width: 0%;
+    }
+
+    /* ── Card ── */
+    #card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 2.25rem 2rem;
+      width: 100%;
+      max-width: 620px;
+      animation: fadeUp .35s ease;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .question-num {
+      font-size: .75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--brand);
+      margin-bottom: .5rem;
+    }
+    .question-text {
+      font-size: 1.2rem;
+      font-weight: 700;
+      line-height: 1.4;
+      margin-bottom: .4rem;
+    }
+    .question-hint {
+      font-size: .9rem;
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+      line-height: 1.5;
+    }
+
+    /* ── Option buttons ── */
+    .options { display: flex; flex-direction: column; gap: .65rem; }
+
+    .option {
+      display: flex;
+      align-items: flex-start;
+      gap: .85rem;
+      padding: .9rem 1rem;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: border-color .2s, background .2s, box-shadow .2s;
+      background: var(--card);
+      text-align: left;
+    }
+    .option:hover {
+      border-color: var(--brand);
+      background: var(--tag-bg);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.08);
+    }
+    .option.selected {
+      border-color: var(--brand);
+      background: var(--tag-bg);
+    }
+    .option-icon {
+      font-size: 1.4rem;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: .05rem;
+    }
+    .option-label { font-weight: 600; font-size: .95rem; }
+    .option-desc  { font-size: .82rem; color: var(--muted); margin-top: .15rem; line-height: 1.4; }
+
+    /* ── Nav buttons ── */
+    .nav { display: flex; gap: .75rem; margin-top: 1.75rem; justify-content: flex-end; }
+
+    button {
+      padding: .6rem 1.4rem;
+      border-radius: 8px;
+      font-size: .95rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all .2s;
+    }
+    #btn-back {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--muted);
+    }
+    #btn-back:hover { border-color: var(--brand); color: var(--brand); }
+    #btn-next {
+      background: var(--brand);
+      color: #fff;
+    }
+    #btn-next:hover  { background: var(--brand-dk); }
+    #btn-next:disabled {
+      background: var(--border);
+      color: var(--muted);
+      cursor: not-allowed;
+    }
+
+    /* ── Result card ── */
+    #result { display: none; }
+    #result .result-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      background: #ECFDF5;
+      color: var(--success);
+      font-weight: 700;
+      font-size: .8rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: .3rem .9rem;
+      border-radius: 99px;
+      margin-bottom: 1rem;
+    }
+    #result h2 { font-size: 1.5rem; font-weight: 800; margin-bottom: .5rem; }
+    #result .result-desc { color: var(--muted); line-height: 1.65; margin-bottom: 1.5rem; }
+
+    .service-list { list-style: none; display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1.75rem; }
+    .service-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: .75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .75rem 1rem;
+    }
+    .service-list .s-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: .1rem; }
+    .service-list .s-name { font-weight: 700; font-size: .95rem; }
+    .service-list .s-why  { font-size: .82rem; color: var(--muted); margin-top: .1rem; line-height: 1.4; }
+
+    .next-steps {
+      background: var(--tag-bg);
+      border: 1px solid #BFDBFE;
+      border-radius: 10px;
+      padding: 1.1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .next-steps h3 { font-size: .95rem; font-weight: 700; margin-bottom: .6rem; color: var(--brand); }
+    .next-steps ol { padding-left: 1.15rem; font-size: .88rem; color: var(--text); line-height: 1.7; }
+
+    #btn-restart {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--muted);
+      width: 100%;
+    }
+    #btn-restart:hover { border-color: var(--brand); color: var(--brand); }
+
+    .tags { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1.25rem; }
+    .tag {
+      font-size: .75rem;
+      font-weight: 600;
+      background: var(--tag-bg);
+      color: var(--tag-text);
+      padding: .2rem .65rem;
+      border-radius: 99px;
+    }
+
+    footer {
+      margin-top: 2.5rem;
+      font-size: .8rem;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="eyebrow">Free Assessment</span>
+  <h1>What Learning Design Do You Need?</h1>
+  <p>Answer 6 quick questions and we'll recommend the right services for your situation — no jargon, no pressure.</p>
+</header>
+
+<div id="progress-wrap">
+  <div id="progress-label">
+    <span id="progress-text">Question 1 of 6</span>
+    <span id="progress-pct">0%</span>
+  </div>
+  <div id="progress-bar-bg"><div id="progress-bar-fill"></div></div>
+</div>
+
+<div id="card">
+  <!-- Questions injected here -->
+  <div id="question-wrap"></div>
+
+  <div class="nav">
+    <button id="btn-back" style="display:none">← Back</button>
+    <button id="btn-next" disabled>Next →</button>
+  </div>
+
+  <!-- Result injected here -->
+  <div id="result"></div>
+</div>
+
+<footer>Powered by intentional learning design &nbsp;·&nbsp; Results are a starting point, not a contract.</footer>
+
+<script>
+// ─────────────────────────────────────────────
+//  QUESTIONS
+// ─────────────────────────────────────────────
+const questions = [
+  {
+    id: "goal",
+    text: "What is the primary goal of this learning initiative?",
+    hint: "Pick the option that best reflects the outcome you're trying to achieve.",
+    options: [
+      { icon: "🚀", label: "Onboard new hires quickly",         desc: "Get people productive in their roles faster.",                    value: "onboard" },
+      { icon: "📋", label: "Ensure compliance or certification", desc: "Meet regulatory, legal, or safety requirements.",                  value: "compliance" },
+      { icon: "⚙️", label: "Build a specific skill or process", desc: "Teach a technical skill, tool, or workflow.",                     value: "skill" },
+      { icon: "🔄", label: "Drive behavior or culture change",   desc: "Shift how people think, collaborate, or make decisions.",          value: "change" },
+      { icon: "📈", label: "Improve performance or close gaps",  desc: "Address a measurable drop in quality, speed, or outcomes.",       value: "performance" },
+    ]
+  },
+  {
+    id: "audience",
+    text: "Who is the primary audience?",
+    hint: "This shapes the tone, complexity, and delivery format of the solution.",
+    options: [
+      { icon: "🧑‍💼", label: "Frontline / hourly employees",   desc: "Field workers, retail associates, technicians, care staff.",      value: "frontline" },
+      { icon: "💻", label: "Knowledge workers",               desc: "Office-based, desk workers, or remote professionals.",             value: "knowledge" },
+      { icon: "👔", label: "Managers and leaders",            desc: "Team leads, supervisors, directors, and executives.",              value: "leaders" },
+      { icon: "🤝", label: "Customers or external partners",  desc: "Clients, vendors, channel partners, or the public.",              value: "external" },
+      { icon: "🏫", label: "Students or learners in training",desc: "People in a formal educational or certification program.",         value: "students" },
+    ]
+  },
+  {
+    id: "size",
+    text: "How many people will go through this training?",
+    hint: "Scale influences whether we design once for many, or tailor for a few.",
+    options: [
+      { icon: "👤", label: "Fewer than 25",    desc: "Small team or pilot cohort — high-touch is feasible.",                  value: "tiny" },
+      { icon: "👥", label: "25 – 200",          desc: "Mid-size — balance between personalization and scalability.",           value: "small" },
+      { icon: "🏢", label: "200 – 1,000",       desc: "Large rollout — consistency and efficiency become critical.",          value: "medium" },
+      { icon: "🌐", label: "1,000+",            desc: "Enterprise or public scale — self-paced delivery is essential.",       value: "large" },
+    ]
+  },
+  {
+    id: "delivery",
+    text: "How do learners prefer (or need) to receive training?",
+    hint: "Consider where your audience works and what technology they have access to.",
+    options: [
+      { icon: "🎓", label: "Live classroom or workshop",       desc: "In-person sessions led by a facilitator.",                        value: "ilt" },
+      { icon: "🖥️", label: "Self-paced online course",        desc: "Learners work through content on their own schedule.",            value: "elearning" },
+      { icon: "📱", label: "Mobile / on-the-job micro-bursts", desc: "Short, just-in-time content accessed from a phone or tablet.",   value: "mobile" },
+      { icon: "🔀", label: "A mix of live and self-paced",     desc: "Blended approach combining instructor time with independent work.",value: "blended" },
+      { icon: "❓", label: "I'm not sure yet",                 desc: "Help me figure out what would work best.",                       value: "unsure" },
+    ]
+  },
+  {
+    id: "content",
+    text: "What is the state of your existing content?",
+    hint: "Be honest — this is the fastest way to scope the effort accurately.",
+    options: [
+      { icon: "🆕", label: "Starting from scratch",            desc: "No existing materials — we need to build everything.",           value: "scratch" },
+      { icon: "📂", label: "We have raw source material",      desc: "SME notes, SOPs, slide decks — needs to be turned into training.",value: "raw" },
+      { icon: "🔧", label: "Existing courses that need a refresh", desc: "We have training, but it's outdated or not working well.",   value: "refresh" },
+      { icon: "📐", label: "We need a strategy before content",desc: "First we need to figure out what to build and why.",             value: "strategy" },
+    ]
+  },
+  {
+    id: "timeline",
+    text: "What is your timeline and budget situation?",
+    hint: "No right answer — this helps us prioritize the right approach.",
+    options: [
+      { icon: "🔥", label: "Urgent — weeks, limited budget",   desc: "Need something fast; lean and practical is fine.",               value: "urgent" },
+      { icon: "⚡", label: "Soon — a few months, modest budget",desc: "Room to do it well, but not looking for a massive project.",    value: "moderate" },
+      { icon: "🌱", label: "Planned — 6+ months, proper budget",desc: "Full design and development lifecycle is on the table.",        value: "planned" },
+      { icon: "🔍", label: "Exploring — just figuring out scope",desc: "We're at the discovery stage — no commitments yet.",           value: "exploring" },
+    ]
+  }
+];
+
+// ─────────────────────────────────────────────
+//  RESULT ENGINE
+// ─────────────────────────────────────────────
+function computeResult(answers) {
+  const { goal, audience, size, delivery, content, timeline } = answers;
+
+  // Service pool
+  const SERVICES = {
+    needs_analysis: {
+      icon: "🔍",
+      name: "Learning Needs Analysis",
+      why: "Before designing anything, we'll uncover the real performance gaps, root causes, and learner context so we invest in the right solution."
+    },
+    curriculum_design: {
+      icon: "🗺️",
+      name: "Curriculum & Learning Strategy",
+      why: "We'll map out the full learning journey — sequencing, objectives, methods, and success metrics — before a single asset is built."
+    },
+    ilt_design: {
+      icon: "🎓",
+      name: "Instructor-Led Training (ILT) Design",
+      why: "We'll design facilitator guides, participant workbooks, and activities for live, high-impact sessions."
+    },
+    elearning: {
+      icon: "🖥️",
+      name: "eLearning Development",
+      why: "We'll build interactive, self-paced courses (SCORM/xAPI) that learners complete on their own schedule at scale."
+    },
+    microlearning: {
+      icon: "📱",
+      name: "Microlearning & Performance Support",
+      why: "Short, targeted bursts of content — videos, job aids, quick-reference cards — designed for in-the-moment use."
+    },
+    blended: {
+      icon: "🔀",
+      name: "Blended Learning Design",
+      why: "We'll combine live sessions with self-paced digital content to maximize engagement and knowledge transfer."
+    },
+    content_refresh: {
+      icon: "🔧",
+      name: "Content Refresh & Modernization",
+      why: "We'll audit your existing materials, update accuracy, improve engagement, and align to current best practices."
+    },
+    video: {
+      icon: "🎬",
+      name: "Video & Media Production",
+      why: "Professionally scripted and produced video content — explainers, demos, and scenario-based vignettes."
+    },
+    assessment: {
+      icon: "📊",
+      name: "Assessment & Evaluation Design",
+      why: "We'll design meaningful knowledge checks, skill assessments, and evaluation plans tied to real business outcomes."
+    },
+    rapid: {
+      icon: "⚡",
+      name: "Rapid Course Development",
+      why: "Using efficient authoring tools and streamlined processes, we'll deliver quality training in a compressed timeframe."
+    }
+  };
+
+  let selected = new Set();
+  let title, description;
+
+  // Strategy / needs analysis trigger
+  if (content === "strategy" || goal === "performance" || delivery === "unsure") {
+    selected.add("needs_analysis");
+    selected.add("curriculum_design");
+  }
+
+  // Content state
+  if (content === "refresh") selected.add("content_refresh");
+  if (content === "scratch" || content === "raw") {
+    if (delivery === "ilt" || delivery === "blended") selected.add("ilt_design");
+    if (delivery === "elearning" || delivery === "unsure") selected.add("elearning");
+    if (delivery === "mobile") selected.add("microlearning");
+    if (delivery === "blended") selected.add("blended");
+  }
+
+  // Goal-driven additions
+  if (goal === "onboard") {
+    selected.add("curriculum_design");
+    if (size === "large" || size === "medium") selected.add("elearning");
+    if (size === "tiny" || size === "small") selected.add("ilt_design");
+  }
+  if (goal === "compliance") {
+    selected.add("elearning");
+    selected.add("assessment");
+  }
+  if (goal === "skill") {
+    selected.add("microlearning");
+    selected.add("video");
+  }
+  if (goal === "change") {
+    selected.add("ilt_design");
+    selected.add("blended");
+    selected.add("assessment");
+  }
+
+  // Scale
+  if (size === "large") { selected.add("elearning"); selected.add("assessment"); }
+
+  // Timeline urgency
+  if (timeline === "urgent") {
+    selected.add("rapid");
+    selected.delete("curriculum_design");
+    selected.delete("blended");
+  }
+  if (timeline === "exploring") {
+    selected.add("needs_analysis");
+    selected.add("curriculum_design");
+  }
+
+  // Audience tweaks
+  if (audience === "frontline") { selected.add("microlearning"); selected.add("video"); }
+  if (audience === "leaders")  { selected.add("ilt_design"); selected.add("blended"); }
+  if (audience === "external") { selected.add("elearning"); selected.add("assessment"); }
+
+  // Ensure at least 2 services
+  if (selected.size < 2) { selected.add("elearning"); selected.add("assessment"); }
+
+  // Cap at 4 most relevant
+  const priority = ["needs_analysis","curriculum_design","rapid","ilt_design","blended",
+                    "elearning","content_refresh","microlearning","video","assessment"];
+  const finalServices = priority.filter(s => selected.has(s)).slice(0, 4).map(s => SERVICES[s]);
+
+  // Title logic
+  if (selected.has("needs_analysis") && selected.has("curriculum_design") && !selected.has("elearning")) {
+    title = "Start with Strategy";
+    description = "Based on your answers, the most valuable investment right now is clarity — before any content is built. A structured needs analysis and learning strategy will prevent costly rework and make sure every dollar and hour is spent on the right solution.";
+  } else if (timeline === "urgent") {
+    title = "Rapid, Targeted Development";
+    description = "Given your timeline, you need a lean, focused approach. We'll skip the unnecessary and build the most impactful deliverables quickly — without sacrificing quality where it matters most.";
+  } else if (delivery === "blended" || goal === "change") {
+    title = "Blended Learning Program";
+    description = "Your goals and audience call for a layered approach — combining live engagement with self-paced reinforcement. This is the most effective design for lasting behavior change and complex skill-building.";
+  } else if ((size === "large" || size === "medium") && delivery !== "ilt") {
+    title = "Scalable Digital Learning";
+    description = "At your scale, self-paced digital learning is the backbone. Well-designed eLearning ensures consistency, tracks completion, and lets you roll out to hundreds or thousands without scheduling constraints.";
+  } else if (goal === "compliance") {
+    title = "Compliance Learning Program";
+    description = "Compliance training requires clear content, meaningful assessment, and reliable completion tracking. We'll design a program that checks every regulatory box while actually engaging learners — not just clicking through screens.";
+  } else {
+    title = "Custom Learning Solution";
+    description = "Your situation is a blend of needs that points to a tailored solution. The services below represent the highest-value investments based on your goal, audience, and constraints.";
+  }
+
+  // Tags
+  const tagMap = {
+    onboard: "Onboarding", compliance: "Compliance", skill: "Skill Building",
+    change: "Behavior Change", performance: "Performance Improvement",
+    frontline: "Frontline Workers", knowledge: "Knowledge Workers",
+    leaders: "Leadership", external: "External Audience", students: "Learners",
+    large: "Enterprise Scale", medium: "Large Scale", small: "Mid-Size", tiny: "Small Cohort",
+    urgent: "Urgent Timeline", planned: "Full Project", exploring: "Discovery Phase"
+  };
+  const tags = [goal, audience, size, timeline].map(v => tagMap[v]).filter(Boolean);
+
+  return { title, description, services: finalServices, tags };
+}
+
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+let current = 0;
+const answers = {};
+
+// ─────────────────────────────────────────────
+//  RENDER
+// ─────────────────────────────────────────────
+function render() {
+  const qWrap  = document.getElementById("question-wrap");
+  const result = document.getElementById("result");
+  const btnBack = document.getElementById("btn-back");
+  const btnNext = document.getElementById("btn-next");
+  const navDiv  = document.querySelector(".nav");
+
+  if (current >= questions.length) {
+    qWrap.style.display = "none";
+    navDiv.style.display = "none";
+    result.style.display = "block";
+    document.getElementById("progress-wrap").style.display = "none";
+
+    const res = computeResult(answers);
+    result.innerHTML = `
+      <div class="result-badge">✅ Assessment Complete</div>
+      <h2>${res.title}</h2>
+      <p class="result-desc">${res.description}</p>
+      <div class="tags">${res.tags.map(t => `<span class="tag">${t}</span>`).join("")}</div>
+      <p style="font-size:.85rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.75rem;">Recommended Services</p>
+      <ul class="service-list">
+        ${res.services.map(s => `
+          <li>
+            <span class="s-icon">${s.icon}</span>
+            <div>
+              <div class="s-name">${s.name}</div>
+              <div class="s-why">${s.why}</div>
+            </div>
+          </li>
+        `).join("")}
+      </ul>
+      <div class="next-steps">
+        <h3>Suggested Next Steps</h3>
+        <ol>
+          <li>Share these results with your key stakeholders to align on scope.</li>
+          <li>Schedule a 30-minute discovery call to dig into your specific context.</li>
+          <li>We'll prepare a tailored proposal with timeline and investment options.</li>
+        </ol>
+      </div>
+      <button id="btn-restart">↩ Start over</button>
+    `;
+    document.getElementById("btn-restart").addEventListener("click", restart);
+    return;
+  }
+
+  const q = questions[current];
+  const total = questions.length;
+  const pct = Math.round((current / total) * 100);
+
+  document.getElementById("progress-text").textContent = `Question ${current + 1} of ${total}`;
+  document.getElementById("progress-pct").textContent  = `${pct}%`;
+  document.getElementById("progress-bar-fill").style.width = `${pct}%`;
+
+  qWrap.style.display = "block";
+  navDiv.style.display = "flex";
+  result.style.display = "none";
+
+  qWrap.innerHTML = `
+    <div class="question-num">Question ${current + 1} of ${total}</div>
+    <div class="question-text">${q.text}</div>
+    <div class="question-hint">${q.hint}</div>
+    <div class="options">
+      ${q.options.map(o => `
+        <div class="option${answers[q.id] === o.value ? " selected" : ""}"
+             data-value="${o.value}" role="radio"
+             aria-checked="${answers[q.id] === o.value}"
+             tabindex="0">
+          <span class="option-icon">${o.icon}</span>
+          <div>
+            <div class="option-label">${o.label}</div>
+            <div class="option-desc">${o.desc}</div>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+
+  // Wire up options
+  qWrap.querySelectorAll(".option").forEach(el => {
+    el.addEventListener("click", () => selectOption(q.id, el.dataset.value));
+    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") selectOption(q.id, el.dataset.value); });
+  });
+
+  btnBack.style.display = current > 0 ? "inline-flex" : "none";
+  btnNext.disabled = !answers[q.id];
+  btnNext.textContent = current === total - 1 ? "See My Results →" : "Next →";
+}
+
+function selectOption(qId, value) {
+  answers[qId] = value;
+  document.querySelectorAll(".option").forEach(el => {
+    const sel = el.dataset.value === value;
+    el.classList.toggle("selected", sel);
+    el.setAttribute("aria-checked", sel);
+  });
+  document.getElementById("btn-next").disabled = false;
+}
+
+function advance() {
+  const q = questions[current];
+  if (!answers[q.id]) return;
+  current++;
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function goBack() {
+  if (current > 0) { current--; render(); }
+}
+
+function restart() {
+  current = 0;
+  Object.keys(answers).forEach(k => delete answers[k]);
+  document.getElementById("progress-wrap").style.display = "block";
+  render();
+}
+
+document.getElementById("btn-next").addEventListener("click", advance);
+document.getElementById("btn-back").addEventListener("click", goBack);
+
+// Keyboard: Enter on card advances
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.tagName !== "BUTTON" && current < questions.length) {
+    if (!document.getElementById("btn-next").disabled) advance();
+  }
+});
+
+render();
+</script>
+</body>
+</html>

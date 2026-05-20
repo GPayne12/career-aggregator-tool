@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Search Jobs - Career Aggregator{% endblock %}
+
+{% block content %}
+<div class="page-title">Search Jobs</div>
+
+<div class="card">
+  <form hx-get="/api/jobs" hx-target="#results" hx-swap="innerHTML" method="get">
+    <div class="filter-section">
+      <div class="form-group">
+        <label for="profile_id">Keyword Profile</label>
+        <select name="profile_id" id="profile_id">
+          <option value="">-- Select a profile --</option>
+          <option value="" disabled id="profiles-loading">Loading profiles...</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="location_type">Location Type</label>
+        <select name="location_type" id="location_type">
+          <option value="">Any</option>
+          <option value="remote">Remote</option>
+          <option value="on_site">On-site</option>
+          <option value="hybrid">Hybrid</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="location">Location</label>
+        <input type="text" name="location" id="location" placeholder="e.g., New York, San Francisco">
+      </div>
+
+      <div class="form-group">
+        <button type="submit">Search</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div id="results" class="results-table">
+  <p class="text-muted text-center mt-2">Select a profile and click Search to see results</p>
+</div>
+
+<script>
+  // Load profiles on page load
+  document.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/profiles')
+      .then(r => r.json())
+      .then(profiles => {
+        const select = document.getElementById('profile_id');
+        const loading = document.getElementById('profiles-loading');
+        select.removeChild(loading);
+
+        profiles.forEach(profile => {
+          const option = document.createElement('option');
+          option.value = profile.id;
+          option.textContent = profile.name;
+          select.appendChild(option);
+        });
+      })
+      .catch(e => console.error('Error loading profiles:', e));
+  });
+
+  // Handle form submission
+  document.getElementById('add-company-form') || document.querySelector('form').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const profileId = document.getElementById('profile_id').value;
+    const locationType = document.getElementById('location_type').value;
+    const location = document.getElementById('location').value;
+
+    let url = '/api/jobs?';
+    if (profileId) url += 'profile_id=' + profileId + '&';
+    if (locationType) url += 'location_type=' + locationType + '&';
+    if (location) url += 'location=' + encodeURIComponent(location) + '&';
+
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        const results = document.getElementById('results');
+        if (data.results.length === 0) {
+          results.innerHTML = '<p class="text-muted text-center mt-2">No jobs found matching your filters</p>';
+          return;
+        }
+
+        let html = `<table><thead><tr><th>Company</th><th>Title</th><th>Location</th><th>Salary</th><th>Posted</th><th>Action</th></tr></thead><tbody>`;
+        data.results.forEach(job => {
+          const days = job.days_old > 0 ? `${job.days_old}d ago` : 'Today';
+          const saveBtn = job.is_saved
+            ? '<span class="text-success">✓ Saved</span>'
+            : `<button onclick="saveJob(${job.job_id});">Save</button>`;
+          html += `
+            <tr>
+              <td>${job.company}</td>
+              <td><a href="${job.url}" target="_blank">${job.title}</a></td>
+              <td>${job.location || 'Remote'}</td>
+              <td>${job.salary || '-'}</td>
+              <td>${days}</td>
+              <td>${saveBtn}</td>
+            </tr>
+          `;
+        });
+        html += '</tbody></table>';
+        results.innerHTML = html;
+      })
+      .catch(e => {
+        console.error('Error:', e);
+        document.getElementById('results').innerHTML = '<p class="text-danger">Error loading results</p>';
+      });
+  });
+
+  function saveJob(jobId) {
+    fetch('/api/pipeline/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({job_id: jobId})
+    })
+    .then(r => r.json())
+    .then(() => {
+      // Re-run the search to update the UI
+      document.querySelector('form').dispatchEvent(new Event('submit'));
+    })
+    .catch(e => {
+      console.error('Error:', e);
+      alert('Error saving job');
+    });
+  }
+</script>
+{% endblock %}

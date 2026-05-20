@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Profiles - Career Aggregator{% endblock %}
+
+{% block content %}
+<div class="page-title">Manage Keyword Profiles</div>
+
+<div class="card">
+  <h3>Create New Profile</h3>
+  <form id="add-profile-form" style="margin-top: 1rem;">
+    <div class="form-group">
+      <label for="profile-name">Profile Name</label>
+      <input type="text" id="profile-name" name="name" placeholder="e.g., L&D, Product, Tech Writing" required>
+    </div>
+    <div class="form-group">
+      <label for="profile-keywords">Keywords (comma-separated)</label>
+      <textarea id="profile-keywords" name="keywords" placeholder="instructional designer, learning designer, learning" required></textarea>
+    </div>
+    <button type="submit">Create Profile</button>
+  </form>
+</div>
+
+<div id="profiles-list"></div>
+
+<script>
+  function loadProfiles() {
+    fetch('/api/profiles')
+      .then(r => r.json())
+      .then(profiles => {
+        const list = document.getElementById('profiles-list');
+        if (profiles.length === 0) {
+          list.innerHTML = '<p class="text-muted">No profiles yet</p>';
+          return;
+        }
+
+        list.innerHTML = '';
+        profiles.forEach(profile => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            <h3>${profile.name}</h3>
+            <p><strong>Keywords:</strong> ${profile.keywords.join(', ')}</p>
+            <div>
+              <button onclick="editProfile(${profile.id}, '${profile.name}', '${profile.keywords.join(', ')}');">Edit</button>
+              <button class="danger" onclick="deleteProfile(${profile.id}, '${profile.name}');">Delete</button>
+            </div>
+          `;
+          list.appendChild(card);
+        });
+      });
+  }
+
+  function editProfile(id, name, keywords) {
+    document.getElementById('profile-name').value = name;
+    document.getElementById('profile-keywords').value = keywords;
+    document.getElementById('add-profile-form').dataset.editId = id;
+    document.querySelector('#add-profile-form button').textContent = 'Update Profile';
+    window.scrollTo(0, 0);
+  }
+
+  function deleteProfile(id, name) {
+    if (!confirm(`Delete "${name}" profile?`)) return;
+
+    fetch(`/api/profiles/${id}`, {method: 'DELETE'})
+      .then(() => {
+        loadProfiles();
+      })
+      .catch(e => {
+        console.error('Error:', e);
+        alert('Error deleting profile');
+      });
+  }
+
+  document.getElementById('add-profile-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const editId = this.dataset.editId;
+    const keywords = document.getElementById('profile-keywords').value
+      .split(',')
+      .map(k => k.trim())
+      .filter(k => k);
+
+    const data = {
+      name: document.getElementById('profile-name').value,
+      keywords: keywords
+    };
+
+    const url = editId ? `/api/profiles/${editId}` : '/api/profiles';
+    const method = editId ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method: method,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    })
+    .then(r => {
+      if (!r.ok) return r.json().then(e => Promise.reject(e));
+      return r.json();
+    })
+    .then(() => {
+      this.reset();
+      delete this.dataset.editId;
+      document.querySelector('#add-profile-form button').textContent = 'Create Profile';
+      loadProfiles();
+    })
+    .catch(e => {
+      console.error('Error:', e);
+      alert(`Error: ${e.detail || 'Unknown error'}`);
+    });
+  });
+
+  document.addEventListener('DOMContentLoaded', loadProfiles);
+</script>
+{% endblock %}

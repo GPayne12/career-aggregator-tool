@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Companies - Career Aggregator{% endblock %}
+
+{% block content %}
+<div class="page-title">Manage Companies</div>
+
+<div class="card">
+  <h3>Add New Company</h3>
+  <form id="add-company-form" style="margin-top: 1rem;">
+    <div class="form-group">
+      <label for="company-name">Company Name</label>
+      <input type="text" id="company-name" name="name" required>
+    </div>
+    <div class="form-group">
+      <label for="company-url">Career Page URL</label>
+      <input type="url" id="company-url" name="career_url" required>
+    </div>
+    <div class="form-group">
+      <label for="company-notes">Notes (optional)</label>
+      <textarea id="company-notes" name="notes"></textarea>
+    </div>
+    <button type="submit">Add Company</button>
+  </form>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+  <h3>Scrape Jobs</h3>
+  <p style="color: var(--text-muted); margin-bottom: 1rem;">Fetch the latest job listings from all active company career pages.</p>
+  <button id="scrape-btn" onclick="runScrape()">Scrape Now</button>
+  <div id="scrape-status" style="margin-top: 1rem;"></div>
+</div>
+
+<div id="companies-list"></div>
+
+<script>
+  function loadCompanies() {
+    fetch('/api/companies/all')
+      .then(r => r.json())
+      .then(companies => {
+        const list = document.getElementById('companies-list');
+        if (companies.length === 0) {
+          list.innerHTML = '<p class="text-muted">No companies yet</p>';
+          return;
+        }
+
+        list.innerHTML = '<div class="card"><h3>All Companies</h3><table><thead><tr><th>Company</th><th>Career URL</th><th>Notes</th><th>Status</th><th>Actions</th></tr></thead><tbody id="companies-tbody"></tbody></table></div>';
+
+        const tbody = document.getElementById('companies-tbody');
+        companies.forEach(company => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${company.name}</td>
+            <td><a href="${company.career_url}" target="_blank">Visit</a></td>
+            <td>${company.notes || '-'}</td>
+            <td>${company.is_active ? '<span class="text-success">Active</span>' : '<span class="text-muted">Inactive</span>'}</td>
+            <td>
+              <button class="icon-button" onclick="editCompany(${company.id}, '${company.name}', '${company.career_url}', '${company.notes || ''}');">Edit</button>
+              <button class="icon-button danger" onclick="deleteCompany(${company.id}, '${company.name}');">Delete</button>
+            </td>
+          `;
+          tbody.appendChild(row);
+        });
+      });
+  }
+
+  function editCompany(id, name, url, notes) {
+    document.getElementById('company-name').value = name;
+    document.getElementById('company-url').value = url;
+    document.getElementById('company-notes').value = notes;
+    document.getElementById('add-company-form').dataset.editId = id;
+    document.querySelector('#add-company-form button').textContent = 'Update Company';
+    window.scrollTo(0, 0);
+  }
+
+  function deleteCompany(id, name) {
+    if (!confirm(`Delete "${name}"?`)) return;
+
+    fetch(`/api/companies/${id}`, {method: 'DELETE'})
+      .then(() => {
+        loadCompanies();
+      })
+      .catch(e => {
+        console.error('Error:', e);
+        alert('Error deleting company');
+      });
+  }
+
+  document.getElementById('add-company-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const editId = this.dataset.editId;
+    const data = {
+      name: document.getElementById('company-name').value,
+      career_url: document.getElementById('company-url').value,
+      notes: document.getElementById('company-notes').value || null
+    };
+
+    const url = editId ? `/api/companies/${editId}` : '/api/companies';
+    const method = editId ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method: method,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    })
+    .then(r => {
+      if (!r.ok) return r.json().then(e => Promise.reject(e));
+      return r.json();
+    })
+    .then(() => {
+      this.reset();
+      delete this.dataset.editId;
+      document.querySelector('#add-company-form button').textContent = 'Add Company';
+      loadCompanies();
+    })
+    .catch(e => {
+      console.error('Error:', e);
+      alert(`Error: ${e.detail || 'Unknown error'}`);
+    });
+  });
+
+  function runScrape() {
+    const btn = document.getElementById('scrape-btn');
+    const status = document.getElementById('scrape-status');
+    btn.disabled = true;
+    btn.textContent = 'Scraping…';
+    status.innerHTML = '';
+
+    fetch('/api/scrape', {method: 'POST'})
+      .then(r => r.json())
+      .then(data => {
+        const rows = data.companies.map(c => {
+          const err = c.error ? `<span style="color:var(--danger)"> — ${c.error}</span>` : '';
+          return `<tr><td>${c.company}</td><td>${c.found}</td><td>${c.added}</td><td>${err || '<span style="color:var(--success)">OK</span>'}</td></tr>`;
+        }).join('');
+        status.innerHTML = `
+          <p><strong>${data.total_added}</strong> new jobs added, <strong>${data.pruned}</strong> pruned, <strong>${data.errors}</strong> errors.</p>
+          <table><thead><tr><th>Company</th><th>Found</th><th>New</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+      })
+      .catch(e => {
+        status.innerHTML = `<p style="color:var(--danger)">Scrape failed: ${e.message}</p>`;
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.textContent = 'Scrape Now';
+      });
+  }
+
+  document.addEventListener('DOMContentLoaded', loadCompanies);
+</script>
+{% endblock %}

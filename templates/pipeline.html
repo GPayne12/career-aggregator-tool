@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Application Pipeline - Career Aggregator{% endblock %}
+
+{% block content %}
+<div class="page-title">Application Pipeline</div>
+
+<div id="pipeline" class="pipeline-container">
+  <p class="text-muted text-center" style="grid-column: 1/-1;">Loading pipeline...</p>
+</div>
+
+<script>
+  function loadPipeline() {
+    fetch('/api/pipeline')
+      .then(r => r.json())
+      .then(data => {
+        const pipeline = document.getElementById('pipeline');
+        pipeline.innerHTML = '';
+
+        const statuses = ['saved', 'applied', 'rejected', 'interviewing', 'offer'];
+
+        statuses.forEach(status => {
+          const column = document.createElement('div');
+          column.className = `pipeline-column`;
+
+          const statusCount = data[status].length;
+          column.innerHTML = `<h3>${status.charAt(0).toUpperCase() + status.slice(1)} (${statusCount})</h3>`;
+
+          if (data[status].length === 0) {
+            column.innerHTML += '<p class="text-muted">No jobs</p>';
+          } else {
+            data[status].forEach(job => {
+              const card = document.createElement('div');
+              card.className = `job-card ${status}`;
+              card.innerHTML = `
+                <h4>${job.title}</h4>
+                <div class="meta">${job.company}</div>
+                <div class="meta">${job.location || 'Remote'}</div>
+                ${job.salary ? `<div class="meta">${job.salary}</div>` : ''}
+                <div class="meta" style="font-size: 0.85rem;">Saved: ${new Date(job.saved_date).toLocaleDateString()}</div>
+                ${job.notes ? `<div class="meta" style="font-style: italic;">${job.notes}</div>` : ''}
+                <div style="margin-top: 0.75rem;">
+                  <a href="${job.url}" target="_blank" style="display: inline-block; margin-right: 0.5rem;">View Listing</a>
+                  ${status !== 'offer' && status !== 'rejected' ? `
+                    <select onchange="updateJobStatus(${job.id}, this.value); this.value='';" style="width: 100px; padding: 0.25rem;">
+                      <option value="">Move to...</option>
+                      ${status !== 'applied' ? '<option value="applied">Applied</option>' : ''}
+                      ${status !== 'rejected' ? '<option value="rejected">Rejected</option>' : ''}
+                      ${status !== 'interviewing' ? '<option value="interviewing">Interviewing</option>' : ''}
+                      ${status !== 'offer' ? '<option value="offer">Offer</option>' : ''}
+                    </select>
+                  ` : ''}
+                  <button class="icon-button" onclick="deleteJob(${job.id});" style="float: right;">Delete</button>
+                </div>
+              `;
+              column.appendChild(card);
+            });
+          }
+
+          pipeline.appendChild(column);
+        });
+      })
+      .catch(e => {
+        console.error('Error loading pipeline:', e);
+        document.getElementById('pipeline').innerHTML = '<p class="text-danger">Error loading pipeline</p>';
+      });
+  }
+
+  function updateJobStatus(jobId, newStatus) {
+    if (!newStatus) return;
+
+    fetch(`/api/pipeline/${jobId}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({status: newStatus})
+    })
+    .then(r => r.json())
+    .then(() => loadPipeline())
+    .catch(e => {
+      console.error('Error updating job:', e);
+      alert('Error updating job');
+    });
+  }
+
+  function deleteJob(jobId) {
+    if (!confirm('Remove this job from pipeline?')) return;
+
+    fetch(`/api/pipeline/${jobId}`, {method: 'DELETE'})
+      .then(() => loadPipeline())
+      .catch(e => {
+        console.error('Error deleting job:', e);
+        alert('Error deleting job');
+      });
+  }
+
+  // Load on page load
+  document.addEventListener('DOMContentLoaded', loadPipeline);
+</script>
+{% endblock %}
