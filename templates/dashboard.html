@@ -29,8 +29,16 @@
   </div>
 </div>
 
-<!-- Pipeline Summary + Recent Jobs -->
+<!-- Recently Saved Jobs + Pipeline Summary -->
 <div class="dashboard-grid">
+
+  <div class="card">
+    <div class="section-header">
+      <h3>Recently Saved Jobs</h3>
+      <a href="/pipeline">View pipeline →</a>
+    </div>
+    <div id="recent-jobs"><p class="text-muted">Loading…</p></div>
+  </div>
 
   <div class="card">
     <div class="section-header">
@@ -38,14 +46,6 @@
       <a href="/pipeline">View all →</a>
     </div>
     <div id="pipeline-summary"><p class="text-muted">Loading…</p></div>
-  </div>
-
-  <div class="card">
-    <div class="section-header">
-      <h3>Recent Jobs</h3>
-      <a href="/search">Search →</a>
-    </div>
-    <div id="recent-jobs"><p class="text-muted">Loading…</p></div>
   </div>
 
 </div>
@@ -85,7 +85,7 @@
       document.getElementById('stat-profiles').textContent = profiles.length;
 
       renderPipelineSummary(pipeline);
-      renderRecentJobs(jobs.results);
+      renderRecentSaved(pipeline.saved);
       renderCompanies(companies);
     }).catch(e => console.error('Dashboard load error:', e));
   }
@@ -124,14 +124,18 @@
     el.innerHTML = rows;
   }
 
-  function renderRecentJobs(jobs) {
+  function renderRecentSaved(saved) {
     const el = document.getElementById('recent-jobs');
-    if (jobs.length === 0) {
-      el.innerHTML = '<p class="text-muted">No jobs found yet. <a href="/companies/manage">Run a scrape</a> to populate listings.</p>';
+    if (!saved || saved.length === 0) {
+      el.innerHTML = '<p class="text-muted">No saved jobs yet. <a href="/search">Browse listings</a> to save one.</p>';
       return;
     }
-    const rows = jobs.slice(0, 6).map(j => {
-      const age = j.days_old > 0 ? `${j.days_old}d ago` : 'Today';
+    const rows = saved.slice(0, 6).map(j => {
+      let age = '';
+      if (j.saved_date) {
+        const days = Math.floor((Date.now() - new Date(j.saved_date)) / 86400000);
+        age = days > 0 ? `${days}d ago` : 'Today';
+      }
       return `<div class="recent-job-row">
         <div class="recent-job-info">
           <a href="${j.url}" target="_blank" class="recent-job-title">${j.title}</a>
