@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Career Aggregator{% endblock %}
+
+{% block content %}
+<div class="page-title">Dashboard</div>
+
+<!-- Stat Cards -->
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-value" id="stat-jobs">—</div>
+    <div class="stat-label">Jobs Available</div>
+    <a href="/search" class="stat-link">Search →</a>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="stat-pipeline">—</div>
+    <div class="stat-label">In Pipeline</div>
+    <a href="/pipeline" class="stat-link">View Pipeline →</a>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="stat-companies">—</div>
+    <div class="stat-label">Companies Tracked</div>
+    <a href="/companies/manage" class="stat-link">Manage →</a>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" id="stat-profiles">—</div>
+    <div class="stat-label">Keyword Profiles</div>
+    <a href="/profiles/manage" class="stat-link">Manage →</a>
+  </div>
+</div>
+
+<!-- Pipeline Summary + Recent Jobs -->
+<div class="dashboard-grid">
+
+  <div class="card">
+    <div class="section-header">
+      <h3>Pipeline Summary</h3>
+      <a href="/pipeline">View all →</a>
+    </div>
+    <div id="pipeline-summary"><p class="text-muted">Loading…</p></div>
+  </div>
+
+  <div class="card">
+    <div class="section-header">
+      <h3>Recent Jobs</h3>
+      <a href="/search">Search →</a>
+    </div>
+    <div id="recent-jobs"><p class="text-muted">Loading…</p></div>
+  </div>
+
+</div>
+
+<!-- Active Companies -->
+<div class="card">
+  <div class="section-header">
+    <h3>Tracked Companies</h3>
+    <a href="/companies/manage">Manage →</a>
+  </div>
+  <div id="companies-list"><p class="text-muted">Loading…</p></div>
+</div>
+
+<script>
+  const STATUS_COLORS = {
+    saved: '#3498db',
+    applied: '#2ecc71',
+    interviewing: '#f39c12',
+    offer: '#27ae60',
+    rejected: '#e74c3c',
+  };
+
+  function loadStats() {
+    Promise.all([
+      fetch('/api/jobs').then(r => r.json()),
+      fetch('/api/pipeline').then(r => r.json()),
+      fetch('/api/companies').then(r => r.json()),
+      fetch('/api/profiles').then(r => r.json()),
+    ]).then(([jobs, pipeline, companies, profiles]) => {
+      document.getElementById('stat-jobs').textContent = jobs.total;
+
+      const pipelineTotal = ['saved','applied','interviewing','offer','rejected']
+        .reduce((sum, s) => sum + pipeline[s].length, 0);
+      document.getElementById('stat-pipeline').textContent = pipelineTotal;
+
+      document.getElementById('stat-companies').textContent = companies.length;
+      document.getElementById('stat-profiles').textContent = profiles.length;
+
+      renderPipelineSummary(pipeline);
+      renderRecentJobs(jobs.results);
+      renderCompanies(companies);
+    }).catch(e => console.error('Dashboard load error:', e));
+  }
+
+  function renderPipelineSummary(data) {
+    const statuses = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
+    const el = document.getElementById('pipeline-summary');
+
+    const hasAny = statuses.some(s => data[s].length > 0);
+    if (!hasAny) {
+      el.innerHTML = '<p class="text-muted">No jobs in pipeline yet. <a href="/search">Search for jobs</a> to get started.</p>';
+      return;
+    }
+
+    const rows = statuses.map(status => {
+      const jobs = data[status];
+      if (jobs.length === 0) return '';
+      const recent = jobs.slice(0, 2).map(j =>
+        `<div class="pipeline-summary-item">
+          <span class="pipeline-dot" style="background:${STATUS_COLORS[status]}"></span>
+          <span class="pipeline-item-text"><strong>${j.title}</strong> — ${j.company}</span>
+        </div>`
+      ).join('');
+      const more = jobs.length > 2
+        ? `<div class="pipeline-more"><a href="/pipeline">+${jobs.length - 2} more</a></div>`
+        : '';
+      return `<div class="pipeline-stage">
+        <div class="pipeline-stage-header">
+          <span class="pipeline-badge" style="background:${STATUS_COLORS[status]}">${status.charAt(0).toUpperCase()+status.slice(1)}</span>
+          <span class="pipeline-count">${jobs.length}</span>
+        </div>
+        ${recent}${more}
+      </div>`;
+    }).join('');
+
+    el.innerHTML = rows;
+  }
+
+  function renderRecentJobs(jobs) {
+    const el = document.getElementById('recent-jobs');
+    if (jobs.length === 0) {
+      el.innerHTML = '<p class="text-muted">No jobs found yet. <a href="/companies/manage">Run a scrape</a> to populate listings.</p>';
+      return;
+    }
+    const rows = jobs.slice(0, 6).map(j => {
+      const age = j.days_old > 0 ? `${j.days_old}d ago` : 'Today';
+      return `<div class="recent-job-row">
+        <div class="recent-job-info">
+          <a href="${j.url}" target="_blank" class="recent-job-title">${j.title}</a>
+          <span class="recent-job-meta">${j.company}${j.location ? ' · ' + j.location : ''}</span>
+        </div>
+        <span class="recent-job-age text-muted">${age}</span>
+      </div>`;
+    }).join('');
+    el.innerHTML = rows;
+  }
+
+  function renderCompanies(companies) {
+    const el = document.getElementById('companies-list');
+    if (companies.length === 0) {
+      el.innerHTML = '<p class="text-muted">No companies yet. <a href="/companies/manage">Add one</a>.</p>';
+      return;
+    }
+    const chips = companies.map(c =>
+      `<a href="${c.career_url}" target="_blank" class="company-chip">${c.name}</a>`
+    ).join('');
+    el.innerHTML = `<div class="company-chips">${chips}</div>`;
+  }
+
+  document.addEventListener('DOMContentLoaded', loadStats);
+</script>
+{% endblock %}

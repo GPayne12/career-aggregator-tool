@@ -38,6 +38,16 @@
   </form>
 </div>
 
+<div class="card" style="margin-bottom: 1.5rem;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.75rem;">
+    <h3 style="margin:0;">Scrape Jobs</h3>
+    <span id="scrape-last" class="text-muted" style="font-size:0.85rem;"></span>
+  </div>
+  <p style="color: #7f8c8d; margin-bottom: 1rem;">Fetch the latest listings from all active company career pages.</p>
+  <button id="scrape-btn" onclick="runScrape()">Scrape Now</button>
+  <div id="scrape-status" style="margin-top: 1rem;"></div>
+</div>
+
 <div id="results" class="results-table">
   <p class="text-muted text-center mt-2">Select a profile and click Search to see results</p>
 </div>
@@ -109,6 +119,34 @@
         document.getElementById('results').innerHTML = '<p class="text-danger">Error loading results</p>';
       });
   });
+
+  function runScrape() {
+    const btn = document.getElementById('scrape-btn');
+    const status = document.getElementById('scrape-status');
+    btn.disabled = true;
+    btn.textContent = 'Scraping…';
+    status.innerHTML = '';
+
+    fetch('/api/scrape', {method: 'POST'})
+      .then(r => r.json())
+      .then(data => {
+        const rows = data.companies.map(c => {
+          const err = c.error ? `<span class="text-danger"> — ${c.error}</span>` : '<span class="text-success">OK</span>';
+          return `<tr><td>${c.company}</td><td>${c.found}</td><td>${c.added}</td><td>${err}</td></tr>`;
+        }).join('');
+        status.innerHTML = `
+          <p><strong>${data.total_added}</strong> new jobs added &nbsp;·&nbsp; <strong>${data.pruned}</strong> pruned &nbsp;·&nbsp; <strong>${data.errors}</strong> errors</p>
+          <table style="margin-top:0.75rem;"><thead><tr><th>Company</th><th>Found</th><th>New</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+        document.getElementById('scrape-last').textContent = 'Last run: ' + new Date().toLocaleTimeString();
+      })
+      .catch(e => {
+        status.innerHTML = `<p class="text-danger">Scrape failed: ${e.message}</p>`;
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.textContent = 'Scrape Now';
+      });
+  }
 
   function saveJob(jobId) {
     fetch('/api/pipeline/save', {

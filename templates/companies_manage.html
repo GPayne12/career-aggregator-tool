@@ -25,10 +25,12 @@
 </div>
 
 <div class="card" style="margin-top: 1.5rem;">
-  <h3>Scrape Jobs</h3>
-  <p style="color: var(--text-muted); margin-bottom: 1rem;">Fetch the latest job listings from all active company career pages.</p>
-  <button id="scrape-btn" onclick="runScrape()">Scrape Now</button>
-  <div id="scrape-status" style="margin-top: 1rem;"></div>
+  <h3>Import from CSV</h3>
+  <p style="color: #7f8c8d; margin: 0.5rem 0 1rem;">CSV must have columns: <code>name</code>, <code>career_url</code>, and optionally <code>notes</code>.</p>
+  <input type="file" id="csv-file" accept=".csv" style="margin-bottom: 1rem;">
+  <br>
+  <button onclick="uploadCSV()">Upload CSV</button>
+  <div id="csv-status" style="margin-top: 1rem;"></div>
 </div>
 
 <div id="companies-list"></div>
@@ -119,30 +121,34 @@
     });
   });
 
-  function runScrape() {
-    const btn = document.getElementById('scrape-btn');
-    const status = document.getElementById('scrape-status');
-    btn.disabled = true;
-    btn.textContent = 'Scraping…';
-    status.innerHTML = '';
+  function uploadCSV() {
+    const fileInput = document.getElementById('csv-file');
+    const status = document.getElementById('csv-status');
+    if (!fileInput.files.length) {
+      status.innerHTML = '<p style="color:#e74c3c;">Please select a CSV file first.</p>';
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    status.innerHTML = '<p class="text-muted">Uploading…</p>';
 
-    fetch('/api/scrape', {method: 'POST'})
-      .then(r => r.json())
-      .then(data => {
-        const rows = data.companies.map(c => {
-          const err = c.error ? `<span style="color:var(--danger)"> — ${c.error}</span>` : '';
-          return `<tr><td>${c.company}</td><td>${c.found}</td><td>${c.added}</td><td>${err || '<span style="color:var(--success)">OK</span>'}</td></tr>`;
-        }).join('');
-        status.innerHTML = `
-          <p><strong>${data.total_added}</strong> new jobs added, <strong>${data.pruned}</strong> pruned, <strong>${data.errors}</strong> errors.</p>
-          <table><thead><tr><th>Company</th><th>Found</th><th>New</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+    fetch('/api/companies/upload-csv', {method: 'POST', body: formData})
+      .then(r => r.json().then(data => ({ok: r.ok, data})))
+      .then(({ok, data}) => {
+        if (!ok) {
+          const msg = Array.isArray(data.detail) ? data.detail.map(e => e.msg).join(', ') : (data.detail || 'Server error');
+          throw new Error(msg);
+        }
+        const lines = [`<strong>${data.added}</strong> added, <strong>${data.skipped}</strong> skipped (duplicates).`];
+        if (data.errors && data.errors.length) {
+          lines.push(`Errors: ${data.errors.map(e => `<em>${e}</em>`).join(', ')}`);
+        }
+        status.innerHTML = `<p>${lines.join(' ')}</p>`;
+        fileInput.value = '';
+        loadCompanies();
       })
       .catch(e => {
-        status.innerHTML = `<p style="color:var(--danger)">Scrape failed: ${e.message}</p>`;
-      })
-      .finally(() => {
-        btn.disabled = false;
-        btn.textContent = 'Scrape Now';
+        status.innerHTML = `<p style="color:#e74c3c;">Upload failed: ${e.message}</p>`;
       });
   }
 

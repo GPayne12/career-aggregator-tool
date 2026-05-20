@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import csv
+import io
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
@@ -153,3 +155,38 @@ def delete_company(company_id: int, db: Session = Depends(get_db)):
 
     db_company.is_active = False
     db.commit()
+
+
+@router.post("/upload-csv")
+async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Bulk-import companies from a CSV file (columns: name, career_url, notes)."""
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must be a .csv")
+
+    content = await file.read()
+    reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+
+    if not {"name", "career_url"}.issubset(set(reader.fieldnames or [])):
+        raise HTTPException(status_code=400, detail="CSV must contain 'name' and 'career_url' columns")
+
+    added, skipped, errors = 0, 0, []
+
+    for i, row in enumerate(reader, start=2):
+        name = (row.get("name") or "").strip()
+        career_url = (row.get("career_url") or "").strip()
+        notes = (row.get("notes") or "").strip() or None
+
+        if not name or not career_url:
+            errors.append(f"Row {i}: missing name or career_url")
+            continue
+
+        existing = db.query(Company).filter(Company.name == name).first()
+        if existing:
+            skipped += 1
+            continue
+
+        db.add(Company(name=name, career_url=career_url, notes=notes))
+        added += 1
+
+    db.commit()
+    return {"added": added, "skipped": skipped, "errors": errors}

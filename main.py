@@ -47,7 +47,7 @@ if os.path.exists("static"):
 
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request):
-    return templates.TemplateResponse("base.html", {"request": request})
+    return templates.TemplateResponse("dashboard.html", {"request": request})
 
 
 @app.get("/search", response_class=HTMLResponse)
