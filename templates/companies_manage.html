@@ -5,119 +5,239 @@
 {% block content %}
 <div class="page-title">Manage Companies</div>
 
-<div class="card">
-  <h3>Add New Company</h3>
-  <form id="add-company-form" style="margin-top: 1rem;">
-    <div class="form-group">
-      <label for="company-name">Company Name</label>
-      <input type="text" id="company-name" name="name" required>
-    </div>
-    <div class="form-group">
-      <label for="company-url">Career Page URL</label>
-      <input type="url" id="company-url" name="career_url" required>
-    </div>
-    <div class="form-group">
-      <label for="company-notes">Notes (optional)</label>
-      <textarea id="company-notes" name="notes"></textarea>
-    </div>
-    <button type="submit">Add Company</button>
-  </form>
-</div>
+<div class="company-tools-grid">
 
-<div class="card" style="margin-top: 1.5rem;">
-  <h3>Import from CSV</h3>
-  <p style="color: #7f8c8d; margin: 0.5rem 0 1rem;">CSV must have columns: <code>name</code>, <code>career_url</code>, and optionally <code>notes</code>.</p>
-  <input type="file" id="csv-file" accept=".csv" style="margin-bottom: 1rem;">
-  <br>
-  <button onclick="uploadCSV()">Upload CSV</button>
-  <div id="csv-status" style="margin-top: 1rem;"></div>
+  <div class="card">
+    <h3 style="margin-bottom:0.75rem;">Add Company</h3>
+    <p class="text-muted" style="font-size:0.85rem;margin-bottom:0.75rem;">Career URL is optional — add it later via Edit if needed.</p>
+    <form id="add-company-form">
+      <div style="display:flex;flex-direction:column;gap:0.4rem;">
+        <input type="text" id="company-name" name="name" placeholder="Company name" required style="margin:0;">
+        <input type="url" id="company-url" name="career_url" placeholder="Career URL (optional)" style="margin:0;">
+      </div>
+      <div style="margin-top:0.5rem;">
+        <button type="submit" id="add-btn">Add</button>
+      </div>
+      <div id="add-status" style="margin-top:0.5rem;font-size:0.85rem;"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:0.75rem;">Import from CSV</h3>
+    <p class="text-muted" style="font-size:0.85rem;margin-bottom:0.75rem;">CSV needs a <code>name</code> column. <code>career_url</code> is optional.</p>
+    <div style="display:flex;gap:0.5rem;align-items:flex-start;">
+      <input type="file" id="csv-file" accept=".csv" style="margin:0;padding:0.5rem;font-size:0.85rem;">
+      <button onclick="uploadCSV()" style="white-space:nowrap;flex-shrink:0;">Upload</button>
+    </div>
+    <div id="csv-status" style="margin-top:0.5rem;font-size:0.85rem;"></div>
+  </div>
+
 </div>
 
 <div id="companies-list"></div>
 
 <script>
+  const companiesData = {};
+
   function loadCompanies() {
-    fetch('/api/companies/all')
+    fetch('/api/companies')
       .then(r => r.json())
       .then(companies => {
         const list = document.getElementById('companies-list');
         if (companies.length === 0) {
-          list.innerHTML = '<p class="text-muted">No companies yet</p>';
+          list.innerHTML = '<p class="text-muted">No companies yet.</p>';
           return;
         }
-
-        list.innerHTML = '<div class="card"><h3>All Companies</h3><table><thead><tr><th>Company</th><th>Career URL</th><th>Notes</th><th>Status</th><th>Actions</th></tr></thead><tbody id="companies-tbody"></tbody></table></div>';
-
+        companies.forEach(c => { companiesData[c.id] = c; });
+        const missing = companies.filter(c => !c.career_url).length;
+        const missingBtn = missing > 0
+          ? `<button class="secondary" onclick="discoverUrls()" id="discover-btn" style="font-size:0.85rem;padding:0.4rem 0.9rem;">Find ${missing} missing URL${missing===1?'':'s'}</button>`
+          : '';
+        list.innerHTML = `
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+              <span class="text-muted" style="font-size:0.9rem;">${companies.length} active</span>
+              ${missingBtn}
+            </div>
+            <div id="discover-status"></div>
+            <table>
+              <thead><tr><th>Company</th><th>Career URL</th><th>Actions</th></tr></thead>
+              <tbody id="companies-tbody"></tbody>
+            </table>
+          </div>`;
         const tbody = document.getElementById('companies-tbody');
-        companies.forEach(company => {
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td>${company.name}</td>
-            <td><a href="${company.career_url}" target="_blank">Visit</a></td>
-            <td>${company.notes || '-'}</td>
-            <td>${company.is_active ? '<span class="text-success">Active</span>' : '<span class="text-muted">Inactive</span>'}</td>
-            <td>
-              <button class="icon-button" onclick="editCompany(${company.id}, '${company.name}', '${company.career_url}', '${company.notes || ''}');">Edit</button>
-              <button class="icon-button danger" onclick="deleteCompany(${company.id}, '${company.name}');">Delete</button>
-            </td>
-          `;
-          tbody.appendChild(row);
-        });
+        companies.forEach(c => tbody.appendChild(buildRow(c)));
       });
   }
 
-  function editCompany(id, name, url, notes) {
-    document.getElementById('company-name').value = name;
-    document.getElementById('company-url').value = url;
-    document.getElementById('company-notes').value = notes;
-    document.getElementById('add-company-form').dataset.editId = id;
-    document.querySelector('#add-company-form button').textContent = 'Update Company';
-    window.scrollTo(0, 0);
+  function buildRow(company) {
+    const tr = document.createElement('tr');
+    tr.id = `row-${company.id}`;
+    const urlCell = company.career_url
+      ? `<a href="${escH(company.career_url)}" target="_blank" style="font-size:0.85rem;word-break:break-all;">${escH(company.career_url)}</a>`
+      : `<span class="text-muted">—</span>`;
+    tr.innerHTML = `
+      <td>${escH(company.name)}</td>
+      <td>${urlCell}</td>
+      <td>
+        <button class="icon-button" onclick="startEdit(${company.id})">Edit</button>
+        <button class="icon-button danger" onclick="deleteCompany(${company.id})">Delete</button>
+      </td>`;
+    return tr;
   }
 
-  function deleteCompany(id, name) {
-    if (!confirm(`Delete "${name}"?`)) return;
+  function startEdit(id) {
+    const c = companiesData[id];
+    if (!c) return;
+    const tr = document.getElementById(`row-${id}`);
+    if (!tr) return;
+    tr.innerHTML = `
+      <td><input type="text" id="edit-name-${id}" value="${escH(c.name)}" style="margin:0;width:100%;"></td>
+      <td><input type="url" id="edit-url-${id}" value="${escH(c.career_url||'')}" style="margin:0;width:100%;"></td>
+      <td>
+        <button class="icon-button" onclick="saveEdit(${id})">Save</button>
+        <button class="icon-button" onclick="cancelEdit(${id})">Cancel</button>
+      </td>`;
+    document.getElementById(`edit-name-${id}`).focus();
+  }
 
+  function cancelEdit(id) {
+    const tr = document.getElementById(`row-${id}`);
+    if (tr) tr.replaceWith(buildRow(companiesData[id]));
+  }
+
+  function saveEdit(id) {
+    const name = document.getElementById(`edit-name-${id}`).value.trim();
+    const career_url = document.getElementById(`edit-url-${id}`).value.trim();
+    if (!name) return;
+    fetch(`/api/companies/${id}`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, career_url})
+    })
+    .then(r => r.json().then(data => ({ok: r.ok, data})))
+    .then(({ok, data}) => {
+      if (!ok) { alert(data.detail || 'Save failed'); return; }
+      companiesData[id] = data;
+      const tr = document.getElementById(`row-${id}`);
+      if (tr) tr.replaceWith(buildRow(data));
+    })
+    .catch(e => alert('Error: ' + e));
+  }
+
+  function deleteCompany(id) {
+    const c = companiesData[id];
+    if (!c || !confirm(`Delete "${c.name}"?`)) return;
     fetch(`/api/companies/${id}`, {method: 'DELETE'})
-      .then(() => {
-        loadCompanies();
+      .then(r => {
+        if (r.ok || r.status === 204) {
+          delete companiesData[id];
+          const tr = document.getElementById(`row-${id}`);
+          if (tr) tr.remove();
+          const countEl = document.querySelector('#companies-list .text-muted');
+          if (countEl) {
+            const remaining = Object.keys(companiesData).length;
+            countEl.textContent = `${remaining} active`;
+          }
+        } else {
+          alert('Error deleting company');
+        }
       })
-      .catch(e => {
-        console.error('Error:', e);
-        alert('Error deleting company');
-      });
+      .catch(e => alert('Error deleting company'));
+  }
+
+  function escH(s) {
+    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function discoverUrls() {
+    const btn = document.getElementById('discover-btn');
+    const statusEl = document.getElementById('discover-status');
+    if (!btn || !statusEl) return;
+    btn.disabled = true;
+    btn.textContent = 'Finding…';
+    statusEl.innerHTML = `
+      <div class="scrape-progress" style="margin-bottom:0.75rem;">
+        <div class="progress-bar-track"><div class="progress-bar-fill" id="disc-bar"></div></div>
+        <div class="progress-label" id="disc-label">Starting…</div>
+        <div class="scrape-log">
+          <table><thead><tr><th>Company</th><th>Result</th></tr></thead>
+          <tbody id="disc-tbody"></tbody></table>
+        </div>
+      </div>`;
+
+    const bar   = document.getElementById('disc-bar');
+    const label = document.getElementById('disc-label');
+    const tbody = document.getElementById('disc-tbody');
+    const source = new EventSource('/api/companies/discover-urls');
+
+    source.onmessage = function(e) {
+      const data = JSON.parse(e.data);
+      if (data.type === 'start') {
+        label.textContent = `Checking 0 of ${data.total} companies…`;
+      } else if (data.type === 'progress') {
+        const pct = Math.round((data.index / data.total) * 100);
+        bar.style.width = pct + '%';
+        label.textContent = `Checking ${data.index} of ${data.total} companies…`;
+        const result = data.url
+          ? `<a href="${data.url}" target="_blank" style="font-size:0.82rem;word-break:break-all;">${data.url}</a>`
+          : `<span class="text-muted">Not found</span>`;
+        tbody.insertAdjacentHTML('afterbegin',
+          `<tr><td>${data.company}</td><td>${result}</td></tr>`);
+      } else if (data.type === 'done') {
+        source.close();
+        bar.style.width = '100%';
+        bar.classList.add('complete');
+        label.innerHTML = `Done — <strong>${data.found}</strong> of ${data.total} URLs found`;
+        btn.remove();
+        loadCompanies();
+      } else if (data.type === 'error') {
+        source.close();
+        label.innerHTML = `<span class="text-danger">${data.message}</span>`;
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+      }
+    };
+    source.onerror = function() {
+      source.close();
+      label.innerHTML = '<span class="text-danger">Connection lost.</span>';
+      btn.disabled = false;
+    };
   }
 
   document.getElementById('add-company-form').addEventListener('submit', function(e) {
     e.preventDefault();
-    const editId = this.dataset.editId;
-    const data = {
-      name: document.getElementById('company-name').value,
-      career_url: document.getElementById('company-url').value,
-      notes: document.getElementById('company-notes').value || null
-    };
+    const name = document.getElementById('company-name').value.trim();
+    const career_url = document.getElementById('company-url').value.trim() || null;
+    const btn  = document.getElementById('add-btn');
+    const status = document.getElementById('add-status');
 
-    const url = editId ? `/api/companies/${editId}` : '/api/companies';
-    const method = editId ? 'PUT' : 'POST';
+    btn.disabled = true;
+    btn.textContent = 'Adding…';
+    status.innerHTML = '';
 
-    fetch(url, {
-      method: method,
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(data)
+    fetch('/api/companies', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, career_url})
     })
-    .then(r => {
-      if (!r.ok) return r.json().then(e => Promise.reject(e));
-      return r.json();
-    })
-    .then(() => {
-      this.reset();
-      delete this.dataset.editId;
-      document.querySelector('#add-company-form button').textContent = 'Add Company';
+    .then(r => r.json().then(data => ({ok: r.ok, data})))
+    .then(({ok, data}) => {
+      if (!ok) throw new Error(data.detail || 'Unknown error');
+      const urlNote = data.career_url
+        ? ` — <a href="${data.career_url}" target="_blank">${data.career_url}</a>`
+        : ' (no URL — add one via Edit)';
+      status.innerHTML = `<span class="text-success">Added${urlNote}</span>`;
+      document.getElementById('company-name').value = '';
+      document.getElementById('company-url').value = '';
       loadCompanies();
     })
     .catch(e => {
-      console.error('Error:', e);
-      alert(`Error: ${e.detail || 'Unknown error'}`);
+      status.innerHTML = `<span class="text-danger">${e.message}</span>`;
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = 'Add';
     });
   });
 
@@ -125,30 +245,31 @@
     const fileInput = document.getElementById('csv-file');
     const status = document.getElementById('csv-status');
     if (!fileInput.files.length) {
-      status.innerHTML = '<p style="color:#e74c3c;">Please select a CSV file first.</p>';
+      status.innerHTML = '<span class="text-danger">Please select a CSV file first.</span>';
       return;
     }
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
-    status.innerHTML = '<p class="text-muted">Uploading…</p>';
+    status.innerHTML = '<span class="text-muted">Uploading and discovering URLs…</span>';
 
-    fetch('/api/companies/upload-csv', {method: 'POST', body: formData})
+    fetch('/api/companies/upload-csv', {method:'POST', body: formData})
       .then(r => r.json().then(data => ({ok: r.ok, data})))
       .then(({ok, data}) => {
         if (!ok) {
-          const msg = Array.isArray(data.detail) ? data.detail.map(e => e.msg).join(', ') : (data.detail || 'Server error');
+          const msg = Array.isArray(data.detail)
+            ? data.detail.map(e => e.msg).join(', ')
+            : (data.detail || 'Server error');
           throw new Error(msg);
         }
-        const lines = [`<strong>${data.added}</strong> added, <strong>${data.skipped}</strong> skipped (duplicates).`];
-        if (data.errors && data.errors.length) {
-          lines.push(`Errors: ${data.errors.map(e => `<em>${e}</em>`).join(', ')}`);
-        }
-        status.innerHTML = `<p>${lines.join(' ')}</p>`;
+        let msg = `<strong>${data.added}</strong> added, <strong>${data.skipped}</strong> skipped.`;
+        if (data.errors && data.errors.length)
+          msg += ` <span class="text-danger">Errors: ${data.errors.join('; ')}</span>`;
+        status.innerHTML = msg;
         fileInput.value = '';
         loadCompanies();
       })
       .catch(e => {
-        status.innerHTML = `<p style="color:#e74c3c;">Upload failed: ${e.message}</p>`;
+        status.innerHTML = `<span class="text-danger">Upload failed: ${e.message}</span>`;
       });
   }
 

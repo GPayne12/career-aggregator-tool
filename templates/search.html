@@ -1,168 +1,296 @@
 {% extends "base.html" %}
 
-{% block title %}Search Jobs - Career Aggregator{% endblock %}
+{% block title %}Scrape Jobs - Career Aggregator{% endblock %}
 
 {% block content %}
-<div class="page-title">Search Jobs</div>
+<div class="page-title">Scrape Jobs</div>
 
+<!-- Fetch card -->
 <div class="card">
-  <form hx-get="/api/jobs" hx-target="#results" hx-swap="innerHTML" method="get">
-    <div class="filter-section">
-      <div class="form-group">
-        <label for="profile_id">Keyword Profile</label>
-        <select name="profile_id" id="profile_id">
-          <option value="">-- Select a profile --</option>
-          <option value="" disabled id="profiles-loading">Loading profiles...</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="location_type">Location Type</label>
-        <select name="location_type" id="location_type">
-          <option value="">Any</option>
-          <option value="remote">Remote</option>
-          <option value="on_site">On-site</option>
-          <option value="hybrid">Hybrid</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="location">Location</label>
-        <input type="text" name="location" id="location" placeholder="e.g., New York, San Francisco">
-      </div>
-
-      <div class="form-group">
-        <button type="submit">Search</button>
-      </div>
-    </div>
-  </form>
-</div>
-
-<div class="card" style="margin-bottom: 1.5rem;">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.75rem;">
-    <h3 style="margin:0;">Scrape Jobs</h3>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+    <h3 style="margin:0;">Fetch Latest Listings</h3>
     <span id="scrape-last" class="text-muted" style="font-size:0.85rem;"></span>
   </div>
-  <p style="color: #7f8c8d; margin-bottom: 1rem;">Fetch the latest listings from all active company career pages.</p>
+  <p class="text-muted" style="margin-bottom:1rem;">Pull the latest listings from all active company career pages.</p>
   <button id="scrape-btn" onclick="runScrape()">Scrape Now</button>
-  <div id="scrape-status" style="margin-top: 1rem;"></div>
+  <div id="scrape-status" style="margin-top:1rem;"></div>
 </div>
 
-<div id="results" class="results-table">
-  <p class="text-muted text-center mt-2">Select a profile and click Search to see results</p>
+<!-- Job listings card -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+    <h3 style="margin:0;">Available Jobs</h3>
+    <span id="jobs-count" class="text-muted" style="font-size:0.85rem;"></span>
+  </div>
+
+  <div class="jobs-filters">
+    <!-- Profile chips -->
+    <div class="filter-row">
+      <span class="filter-label">Profiles</span>
+      <div id="profile-chips" class="chip-group">
+        <span class="text-muted" style="font-size:0.85rem;">Loading…</span>
+      </div>
+    </div>
+    <!-- Location + search -->
+    <div class="filter-row" style="flex-wrap:wrap; gap:1rem;">
+      <div style="display:flex; flex-direction:column; gap:0.35rem;">
+        <span class="filter-label">Location</span>
+        <div class="pill-group" id="location-pills">
+          <button class="pill active" data-value="">All</button>
+          <button class="pill" data-value="remote">Remote</button>
+          <button class="pill" data-value="hybrid">Hybrid</button>
+          <button class="pill" data-value="on_site">On-site</button>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:0.35rem; flex:1; min-width:200px;">
+        <span class="filter-label">Search</span>
+        <input type="text" id="jobs-search" placeholder="Filter by title or company…" style="margin:0;">
+      </div>
+    </div>
+  </div>
+
+  <div id="jobs-list"><p class="text-muted">Loading…</p></div>
 </div>
 
 <script>
-  // Load profiles on page load
-  document.addEventListener('DOMContentLoaded', function() {
-    fetch('/api/profiles')
-      .then(r => r.json())
-      .then(profiles => {
-        const select = document.getElementById('profile_id');
-        const loading = document.getElementById('profiles-loading');
-        select.removeChild(loading);
+  let selectedProfileIds = new Set();
+  let selectedLocationType = '';
+  let allJobRows = [];
+  let profilesCache = [];
 
-        profiles.forEach(profile => {
-          const option = document.createElement('option');
-          option.value = profile.id;
-          option.textContent = profile.name;
-          select.appendChild(option);
-        });
-      })
-      .catch(e => console.error('Error loading profiles:', e));
-  });
-
-  // Handle form submission
-  document.getElementById('add-company-form') || document.querySelector('form').addEventListener('submit', function(e) {
-    e.preventDefault();
-
-    const profileId = document.getElementById('profile_id').value;
-    const locationType = document.getElementById('location_type').value;
-    const location = document.getElementById('location').value;
-
-    let url = '/api/jobs?';
-    if (profileId) url += 'profile_id=' + profileId + '&';
-    if (locationType) url += 'location_type=' + locationType + '&';
-    if (location) url += 'location=' + encodeURIComponent(location) + '&';
-
-    fetch(url)
-      .then(r => r.json())
-      .then(data => {
-        const results = document.getElementById('results');
-        if (data.results.length === 0) {
-          results.innerHTML = '<p class="text-muted text-center mt-2">No jobs found matching your filters</p>';
-          return;
-        }
-
-        let html = `<table><thead><tr><th>Company</th><th>Title</th><th>Location</th><th>Salary</th><th>Posted</th><th>Action</th></tr></thead><tbody>`;
-        data.results.forEach(job => {
-          const days = job.days_old > 0 ? `${job.days_old}d ago` : 'Today';
-          const saveBtn = job.is_saved
-            ? '<span class="text-success">✓ Saved</span>'
-            : `<button onclick="saveJob(${job.job_id});">Save</button>`;
-          html += `
-            <tr>
-              <td>${job.company}</td>
-              <td><a href="${job.url}" target="_blank">${job.title}</a></td>
-              <td>${job.location || 'Remote'}</td>
-              <td>${job.salary || '-'}</td>
-              <td>${days}</td>
-              <td>${saveBtn}</td>
-            </tr>
-          `;
-        });
-        html += '</tbody></table>';
-        results.innerHTML = html;
-      })
-      .catch(e => {
-        console.error('Error:', e);
-        document.getElementById('results').innerHTML = '<p class="text-danger">Error loading results</p>';
-      });
-  });
+  // ── Scrape ────────────────────────────────────────────────────────────────
 
   function runScrape() {
     const btn = document.getElementById('scrape-btn');
     const status = document.getElementById('scrape-status');
     btn.disabled = true;
     btn.textContent = 'Scraping…';
-    status.innerHTML = '';
 
-    fetch('/api/scrape', {method: 'POST'})
-      .then(r => r.json())
-      .then(data => {
-        const rows = data.companies.map(c => {
-          const err = c.error ? `<span class="text-danger"> — ${c.error}</span>` : '<span class="text-success">OK</span>';
-          return `<tr><td>${c.company}</td><td>${c.found}</td><td>${c.added}</td><td>${err}</td></tr>`;
-        }).join('');
-        status.innerHTML = `
-          <p><strong>${data.total_added}</strong> new jobs added &nbsp;·&nbsp; <strong>${data.pruned}</strong> pruned &nbsp;·&nbsp; <strong>${data.errors}</strong> errors</p>
-          <table style="margin-top:0.75rem;"><thead><tr><th>Company</th><th>Found</th><th>New</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+    status.innerHTML = `
+      <div class="scrape-progress">
+        <div class="progress-bar-track"><div class="progress-bar-fill" id="scrape-bar"></div></div>
+        <div class="progress-label" id="scrape-label">Starting…</div>
+      </div>`;
+
+    const bar   = document.getElementById('scrape-bar');
+    const label = document.getElementById('scrape-label');
+    const source = new EventSource('/api/scrape/stream');
+
+    source.onmessage = function(e) {
+      const data = JSON.parse(e.data);
+      if (data.type === 'start') {
+        label.textContent = `Scraping 0 of ${data.total} companies…`;
+      } else if (data.type === 'progress') {
+        const pct = Math.round((data.index / data.total) * 100);
+        bar.style.width = pct + '%';
+        label.textContent = `Scraping ${data.index} of ${data.total} companies…`;
+      } else if (data.type === 'done') {
+        source.close();
+        bar.style.width = '100%';
+        bar.classList.add('complete');
+        label.innerHTML = `Done &mdash; <strong>${data.total_added}</strong> new jobs &nbsp;·&nbsp; <strong>${data.pruned}</strong> pruned &nbsp;·&nbsp; <strong>${data.errors}</strong> errors`;
         document.getElementById('scrape-last').textContent = 'Last run: ' + new Date().toLocaleTimeString();
-      })
-      .catch(e => {
-        status.innerHTML = `<p class="text-danger">Scrape failed: ${e.message}</p>`;
-      })
-      .finally(() => {
         btn.disabled = false;
         btn.textContent = 'Scrape Now';
+        loadJobs();
+      } else if (data.type === 'error') {
+        source.close();
+        label.innerHTML = `<span class="text-danger">Fatal error: ${data.message}</span>`;
+        btn.disabled = false;
+        btn.textContent = 'Scrape Now';
+      }
+    };
+
+    source.onerror = function() {
+      source.close();
+      document.getElementById('scrape-label').innerHTML =
+        '<span class="text-danger">Connection lost. Check server logs.</span>';
+      btn.disabled = false;
+      btn.textContent = 'Scrape Now';
+    };
+  }
+
+  // ── Profiles ──────────────────────────────────────────────────────────────
+
+  function loadProfiles() {
+    fetch('/api/profiles')
+      .then(r => r.json())
+      .then(data => {
+        profilesCache = data;
+        const container = document.getElementById('profile-chips');
+        if (!data.length) {
+          container.innerHTML = '<span class="text-muted" style="font-size:0.85rem;">No profiles — <a href="/profiles/manage">create one</a></span>';
+          return;
+        }
+        container.innerHTML = data.map(p =>
+          `<button class="chip" data-id="${p.id}" onclick="toggleProfile(${p.id})">${escH(p.name)}</button>`
+        ).join('');
       });
   }
 
-  function saveJob(jobId) {
-    fetch('/api/pipeline/save', {
+  function toggleProfile(id) {
+    if (selectedProfileIds.has(id)) selectedProfileIds.delete(id);
+    else selectedProfileIds.add(id);
+    document.querySelectorAll('#profile-chips .chip').forEach(chip => {
+      chip.classList.toggle('active', selectedProfileIds.has(parseInt(chip.dataset.id)));
+    });
+    loadJobs();
+  }
+
+  // ── Location pills ────────────────────────────────────────────────────────
+
+  document.querySelectorAll('#location-pills .pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#location-pills .pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedLocationType = btn.dataset.value;
+      loadJobs();
+    });
+  });
+
+  // ── Text search (client-side) ─────────────────────────────────────────────
+
+  let searchTimer;
+  document.getElementById('jobs-search').addEventListener('input', function() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => applyTextFilter(this.value), 150);
+  });
+
+  function applyTextFilter(q) {
+    const lower = q.toLowerCase().trim();
+    let visible = 0;
+    allJobRows.forEach(({el, title, company}) => {
+      const show = !lower || title.includes(lower) || company.includes(lower);
+      el.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    const countEl = document.getElementById('jobs-count');
+    if (lower) countEl.textContent = `${visible} of ${allJobRows.length} jobs`;
+    else updateCount(allJobRows.length);
+  }
+
+  function updateCount(n) {
+    const base = `${n} job${n !== 1 ? 's' : ''}`;
+    const profileCount = selectedProfileIds.size;
+    const suffix = profileCount > 0 ? ` · sorted by relevance` : '';
+    document.getElementById('jobs-count').textContent = base + suffix;
+  }
+
+  // ── Jobs ──────────────────────────────────────────────────────────────────
+
+  function loadJobs() {
+    const params = new URLSearchParams();
+    if (selectedProfileIds.size > 0)
+      params.set('profile_ids', [...selectedProfileIds].join(','));
+    if (selectedLocationType)
+      params.set('location_type', selectedLocationType);
+
+    const list = document.getElementById('jobs-list');
+    list.innerHTML = '<p class="text-muted">Loading…</p>';
+    document.getElementById('jobs-count').textContent = '';
+    allJobRows = [];
+
+    fetch(`/api/jobs?${params}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.results.length) {
+          list.innerHTML = '<p class="text-muted">No jobs found. Try scraping or adjusting filters.</p>';
+          updateCount(0);
+          return;
+        }
+
+        const showScore = selectedProfileIds.size > 0;
+        const scoreHeader = showScore ? '<th style="width:110px;">Relevance</th>' : '';
+
+        const table = document.createElement('table');
+        table.innerHTML = `
+          <thead><tr>
+            <th>Title</th>
+            <th style="width:140px;">Company</th>
+            <th style="width:160px;">Location</th>
+            <th style="width:75px;">Posted</th>
+            ${scoreHeader}
+            <th style="width:70px;"></th>
+          </tr></thead>
+          <tbody id="jobs-tbody"></tbody>`;
+
+        const tbody = table.querySelector('tbody');
+        data.results.forEach(job => {
+          const row = buildJobRow(job, showScore);
+          tbody.appendChild(row.el);
+          allJobRows.push(row);
+        });
+
+        list.innerHTML = '';
+        list.appendChild(table);
+        updateCount(data.total);
+
+        // Re-apply any active text filter
+        const q = document.getElementById('jobs-search').value;
+        if (q) applyTextFilter(q);
+      })
+      .catch(e => {
+        list.innerHTML = `<p class="text-danger">Error loading jobs: ${escH(e.message)}</p>`;
+      });
+  }
+
+  function buildJobRow(job, showScore) {
+    const tr = document.createElement('tr');
+    tr.dataset.jobId = job.job_id;
+
+    const age = job.days_old > 0 ? `${job.days_old}d ago` : 'Today';
+    const loc = job.location || '—';
+
+    let scoreCell = '';
+    if (showScore) {
+      const pct = job.relevance_score;
+      const color = pct >= 75 ? '#27ae60' : pct >= 40 ? '#f39c12' : '#bdc3c7';
+      const tip = job.matched_keywords.length
+        ? `title="${escH(job.matched_keywords.join(', '))}"`
+        : '';
+      scoreCell = `<td ${tip}>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="flex:1;height:6px;background:#ecf0f1;border-radius:3px;overflow:hidden;">
+            <div style="width:${pct}%;height:100%;background:${color};border-radius:3px;transition:width 0.3s;"></div>
+          </div>
+          <span style="font-size:0.8rem;color:${color};min-width:32px;text-align:right;">${pct}%</span>
+        </div>
+      </td>`;
+    }
+
+    const saveLabel = job.is_saved ? 'Saved' : 'Save';
+    const saveDisabled = job.is_saved ? 'disabled' : '';
+
+    tr.innerHTML = `
+      <td><a href="${escH(job.url)}" target="_blank" class="job-title-link">${escH(job.title)}</a></td>
+      <td style="font-size:0.9rem;">${escH(job.company)}</td>
+      <td style="font-size:0.85rem;color:#7f8c8d;">${escH(loc)}</td>
+      <td style="font-size:0.85rem;color:#7f8c8d;white-space:nowrap;">${age}</td>
+      ${scoreCell}
+      <td><button class="icon-button" ${saveDisabled} onclick="saveJob(${job.job_id},this)">${saveLabel}</button></td>`;
+
+    return { el: tr, title: job.title.toLowerCase(), company: job.company.toLowerCase() };
+  }
+
+  function saveJob(jobId, btn) {
+    btn.disabled = true;
+    btn.textContent = '…';
+    fetch('/api/pipeline', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({job_id: jobId})
+      body: JSON.stringify({job_id: jobId}),
     })
-    .then(r => r.json())
-    .then(() => {
-      // Re-run the search to update the UI
-      document.querySelector('form').dispatchEvent(new Event('submit'));
-    })
-    .catch(e => {
-      console.error('Error:', e);
-      alert('Error saving job');
-    });
+    .then(r => { btn.textContent = (r.ok || r.status === 201) ? 'Saved' : 'Save'; if (!r.ok && r.status !== 201) btn.disabled = false; })
+    .catch(() => { btn.disabled = false; btn.textContent = 'Save'; });
   }
+
+  function escH(s) {
+    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadProfiles();
+    loadJobs();
+  });
 </script>
 {% endblock %}

@@ -470,6 +470,170 @@ a:hover {
   text-decoration: none;
 }
 
+/* Company tools grid */
+.company-tools-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .company-tools-grid { grid-template-columns: 1fr; }
+}
+
+/* Scrape progress */
+.scrape-progress {
+  margin-top: 1rem;
+}
+
+.progress-bar-track {
+  height: 8px;
+  background: #ecf0f1;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: #3498db;
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+.progress-bar-fill.complete {
+  background: #27ae60;
+}
+
+.progress-label {
+  font-size: 0.9rem;
+  color: #7f8c8d;
+  margin-bottom: 0.75rem;
+}
+
+.scrape-log {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #ecf0f1;
+  border-radius: 4px;
+  margin-top: 0.75rem;
+}
+
+.scrape-log table {
+  box-shadow: none;
+  font-size: 0.875rem;
+}
+
+.scrape-log thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* Jobs filter bar */
+.jobs-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid #ecf0f1;
+}
+
+.filter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.filter-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #95a5a6;
+  margin-bottom: 0.35rem;
+  display: block;
+}
+
+/* Profile chips (multi-select toggles) */
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  background: #ecf0f1;
+  color: #2c3e50;
+  border: 1px solid #dde1e7;
+  padding: 0.3rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.chip:hover {
+  background: #d5d8dc;
+}
+
+.chip.active {
+  background: #2c3e50;
+  color: white;
+  border-color: #2c3e50;
+}
+
+/* Location type pills (single-select) */
+.pill-group {
+  display: flex;
+  gap: 0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pill {
+  background: white;
+  color: #555;
+  border: none;
+  border-right: 1px solid #ddd;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 0;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.pill:last-child {
+  border-right: none;
+}
+
+.pill:hover {
+  background: #f5f5f5;
+}
+
+.pill.active {
+  background: #2c3e50;
+  color: white;
+}
+
+/* Job title link */
+.job-title-link {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.job-title-link:hover {
+  color: #3498db;
+  text-decoration: underline;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .stat-grid {

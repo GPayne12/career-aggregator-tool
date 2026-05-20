@@ -17,7 +17,7 @@
     <div class="stat-label">In Pipeline</div>
     <a href="/pipeline" class="stat-link">View Pipeline →</a>
   </div>
-  <div class="stat-card">
+  <div class="stat-card" style="cursor:pointer;" onclick="location.href='/companies/manage'">
     <div class="stat-value" id="stat-companies">—</div>
     <div class="stat-label">Companies Tracked</div>
     <a href="/companies/manage" class="stat-link">Manage →</a>
@@ -70,7 +70,7 @@
 
   function loadStats() {
     Promise.all([
-      fetch('/api/jobs').then(r => r.json()),
+      fetch('/api/jobs?per_company_limit=10').then(r => r.json()),
       fetch('/api/pipeline').then(r => r.json()),
       fetch('/api/companies').then(r => r.json()),
       fetch('/api/profiles').then(r => r.json()),
