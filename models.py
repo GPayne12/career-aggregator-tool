@@ -16,6 +16,7 @@ class Company(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
+    is_skipped = Column(Boolean, default=False)
 
     def to_dict(self):
         return {
@@ -24,6 +25,7 @@ class Company(Base):
             "career_url": self.career_url,
             "notes": self.notes,
             "is_active": self.is_active,
+            "is_skipped": self.is_skipped,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

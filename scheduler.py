@@ -49,7 +49,10 @@ def iter_scrape() -> Generator[dict, None, None]:
     db: Session = SessionLocal()
     scraper = JobScraper()
     try:
-        companies = db.query(Company).filter(Company.is_active == True).all()
+        companies = db.query(Company).filter(
+            Company.is_active == True,
+            Company.is_skipped == False,
+        ).all()
         total = len(companies)
         total_added = 0
         errors = 0

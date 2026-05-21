@@ -31,6 +31,7 @@ class CompanyResponse(BaseModel):
     career_url: str
     notes: Optional[str] = None
     is_active: bool
+    is_skipped: bool = False
 
 
 # ── Fixed-path routes first (must come before /{company_id}) ─────────────────
@@ -39,14 +40,14 @@ class CompanyResponse(BaseModel):
 def list_companies(db: Session = Depends(get_db)):
     companies = db.query(Company).filter(Company.is_active == True).all()
     return [CompanyResponse(id=c.id, name=c.name, career_url=c.career_url,
-                            notes=c.notes, is_active=c.is_active) for c in companies]
+                            notes=c.notes, is_active=c.is_active, is_skipped=bool(c.is_skipped)) for c in companies]
 
 
 @router.get("/all", response_model=List[CompanyResponse])
 def list_all_companies(db: Session = Depends(get_db)):
     companies = db.query(Company).all()
     return [CompanyResponse(id=c.id, name=c.name, career_url=c.career_url,
-                            notes=c.notes, is_active=c.is_active) for c in companies]
+                            notes=c.notes, is_active=c.is_active, is_skipped=bool(c.is_skipped)) for c in companies]
 
 
 @router.get("/discover-urls")
@@ -115,6 +116,20 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
 
 # ── Param routes after all fixed paths ───────────────────────────────────────
 
+@router.post("/{company_id}/skip", response_model=CompanyResponse)
+def toggle_company_skip(company_id: int, db: Session = Depends(get_db)):
+    """Toggle the is_skipped flag for a company (skipped companies are excluded from scraping)."""
+    db_company = db.query(Company).filter(Company.id == company_id).first()
+    if not db_company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    db_company.is_skipped = not bool(db_company.is_skipped)
+    db.commit()
+    db.refresh(db_company)
+    return CompanyResponse(id=db_company.id, name=db_company.name,
+                           career_url=db_company.career_url, notes=db_company.notes,
+                           is_active=db_company.is_active, is_skipped=bool(db_company.is_skipped))
+
+
 @router.get("/{company_id}", response_model=CompanyResponse)
 def get_company(company_id: int, db: Session = Depends(get_db)):
     company = db.query(Company).filter(Company.id == company_id).first()
@@ -137,7 +152,7 @@ def create_company(company: CompanyCreate, db: Session = Depends(get_db)):
     db.refresh(db_company)
     return CompanyResponse(id=db_company.id, name=db_company.name,
                            career_url=db_company.career_url, notes=db_company.notes,
-                           is_active=db_company.is_active)
+                           is_active=db_company.is_active, is_skipped=bool(db_company.is_skipped))
 
 
 @router.put("/{company_id}", response_model=CompanyResponse)
@@ -164,7 +179,7 @@ def update_company(company_id: int, company: CompanyUpdate, db: Session = Depend
     db.refresh(db_company)
     return CompanyResponse(id=db_company.id, name=db_company.name,
                            career_url=db_company.career_url, notes=db_company.notes,
-                           is_active=db_company.is_active)
+                           is_active=db_company.is_active, is_skipped=bool(db_company.is_skipped))
 
 
 @router.delete("/{company_id}", status_code=204)
