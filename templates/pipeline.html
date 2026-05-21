@@ -3,17 +3,23 @@
 {% block title %}Application Pipeline - Career Aggregator{% endblock %}
 
 {% block content %}
-<div class="page-title">Application Pipeline</div>
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+  <div class="page-title" style="margin-bottom:0;">Application Pipeline</div>
+  <button onclick="exportPipelineCSV()" class="secondary" style="font-size:0.85rem; padding:0.35rem 0.85rem;">Export CSV</button>
+</div>
 
 <div id="pipeline" class="pipeline-container">
   <p class="text-muted text-center" style="grid-column: 1/-1;">Loading pipeline...</p>
 </div>
 
 <script>
+  let pipelineData = null;
+
   function loadPipeline() {
     fetch('/api/pipeline')
       .then(r => r.json())
       .then(data => {
+        pipelineData = data;
         const pipeline = document.getElementById('pipeline');
         pipeline.innerHTML = '';
 
@@ -93,7 +99,36 @@
       });
   }
 
-  // Load on page load
+  function exportPipelineCSV() {
+    if (!pipelineData) { alert('No pipeline data loaded yet.'); return; }
+
+    const statuses = ['saved', 'applied', 'rejected', 'interviewing', 'offer'];
+    const all = statuses.flatMap(s => (pipelineData[s] || []).map(j => ({...j, status: s})));
+    if (!all.length) { alert('Pipeline is empty.'); return; }
+
+    const lines = [['Title','Company','Location','Salary','Status','Saved Date','Applied Date','Notes','URL'].join(',')];
+    all.forEach(j => lines.push([
+      csvCell(j.title), csvCell(j.company), csvCell(j.location), csvCell(j.salary),
+      csvCell(j.status),
+      csvCell(j.saved_date  ? new Date(j.saved_date).toLocaleDateString()  : ''),
+      csvCell(j.applied_date ? new Date(j.applied_date).toLocaleDateString() : ''),
+      csvCell(j.notes),
+      csvCell(j.url),
+    ].join(',')));
+
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([lines.join('\n')], {type: 'text/csv;charset=utf-8;'})),
+      download: 'pipeline_export.csv',
+    });
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function csvCell(v) {
+    const s = (v == null ? '' : String(v)).replace(/"/g, '""');
+    return `"${s}"`;
+  }
+
   document.addEventListener('DOMContentLoaded', loadPipeline);
 </script>
 {% endblock %}

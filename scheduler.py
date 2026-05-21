@@ -65,7 +65,6 @@ def iter_scrape() -> Generator[dict, None, None]:
             try:
                 scraped_jobs = scraper.scrape_career_page(company.career_url)
                 added = _save_jobs(db, scraper, company, scraped_jobs)
-                company.last_scraped = datetime.utcnow()
                 db.commit()
                 total_added += added
                 logger.info(f"Scraped {company.name}: {len(scraped_jobs)} listings, {added} new")
@@ -102,7 +101,7 @@ def iter_scrape() -> Generator[dict, None, None]:
 
 
 def scrape_all_companies() -> dict:
-    """Scrape all active companies. Returns a summary dict (used by the scheduler)."""
+    """Scrape all active companies. Returns a summary dict."""
     result = {"total_added": 0, "pruned": 0, "errors": 0, "companies": []}
     for event in iter_scrape():
         if event["type"] == "progress":

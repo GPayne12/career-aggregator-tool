@@ -357,6 +357,74 @@ class JobScraper:
             logger.error(f"Ashby API error for {url}: {e}")
             return self._scrape_generic(url)
 
+    # ── SmartRecruiters ──────────────────────────────────────────────────────
+
+    def _scrape_smartrecruiters(self, url: str) -> List[Dict]:
+        """Use SmartRecruiters' public postings API with pagination."""
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ''
+        path_parts = [p for p in parsed.path.strip('/').split('/') if p]
+
+        # URL forms: careers.smartrecruiters.com/{slug}
+        #            jobs.smartrecruiters.com/{slug}
+        #            www.smartrecruiters.com/{slug}
+        company = path_parts[0] if 'smartrecruiters.com' in hostname and path_parts else None
+        if not company:
+            logger.warning(f"Could not extract SmartRecruiters slug from {url}")
+            return self._scrape_generic(url)
+
+        api_url = f"https://api.smartrecruiters.com/v1/companies/{company}/postings"
+        logger.info(f"SmartRecruiters API: GET {api_url}")
+
+        jobs: List[Dict] = []
+        offset = 0
+        limit = 100
+
+        while True:
+            try:
+                time.sleep(self.rate_limit_seconds)
+                resp = requests.get(
+                    api_url,
+                    params={"limit": limit, "offset": offset},
+                    headers=HEADERS,
+                    timeout=30,
+                )
+                if resp.status_code != 200:
+                    logger.warning(f"SmartRecruiters API {resp.status_code} for {api_url}")
+                    break
+
+                data = resp.json()
+                postings = data.get('content', [])
+                if not postings:
+                    break
+
+                for p in postings:
+                    title = p.get('name', '')
+                    job_url = p.get('ref', '')
+                    loc_obj = p.get('location') or {}
+                    loc_parts = [
+                        loc_obj.get('city', ''),
+                        loc_obj.get('region', ''),
+                        (loc_obj.get('country', '') or '').upper(),
+                    ]
+                    location = ', '.join(x for x in loc_parts if x) or None
+                    if title and job_url:
+                        jobs.append({'title': title, 'location': location,
+                                     'salary': None, 'url': job_url,
+                                     'posted_date': p.get('releasedDate', '')})
+
+                total_found = data.get('totalFound', 0)
+                offset += len(postings)
+                if offset >= total_found or len(postings) < limit:
+                    break
+
+            except Exception as e:
+                logger.error(f"SmartRecruiters API error for {api_url}: {e}")
+                break
+
+        logger.info(f"SmartRecruiters: {len(jobs)} jobs from {url}")
+        return jobs
+
     # ── Generic (Playwright) ──────────────────────────────────────────────────
 
     def _fetch_page_playwright(self, url: str) -> Optional[str]:
@@ -530,6 +598,8 @@ class JobScraper:
             return self._scrape_lever(url)
         elif platform == 'ashby':
             return self._scrape_ashby(url)
+        elif platform == 'smartrecruiters':
+            return self._scrape_smartrecruiters(url)
         else:
             return self._scrape_generic(url)
 
