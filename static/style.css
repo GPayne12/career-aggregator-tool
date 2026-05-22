@@ -462,12 +462,23 @@ a:hover {
   border-radius: 20px;
   font-size: 0.9rem;
   text-decoration: none;
+  cursor: pointer;
+  border: none;
   transition: background-color 0.2s;
 }
 
 .company-chip:hover {
   background: #d5d8dc;
   text-decoration: none;
+}
+
+.company-chip.skipped {
+  background: #fdebd0;
+  color: #935116;
+}
+
+.company-chip.skipped:hover {
+  background: #fad7a0;
 }
 
 /* Company tools grid */

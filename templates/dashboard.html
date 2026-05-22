@@ -5,6 +5,38 @@
 {% block content %}
 <div class="page-title">Dashboard</div>
 
+<!-- Company Edit Modal -->
+<div id="company-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:10px;padding:1.5rem;width:340px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+    <h3 style="margin:0 0 1rem;">Edit Company</h3>
+    <input type="hidden" id="ce-id">
+    <div style="display:flex;flex-direction:column;gap:0.55rem;">
+      <div>
+        <label style="font-size:0.8rem;color:#666;display:block;margin-bottom:0.2rem;">Company Name</label>
+        <input type="text" id="ce-name" style="margin:0;width:100%;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:0.8rem;color:#666;display:block;margin-bottom:0.2rem;">Career URL</label>
+        <input type="url" id="ce-url" placeholder="https://…" style="margin:0;width:100%;box-sizing:border-box;">
+      </div>
+      <div style="display:flex;align-items:center;gap:0.6rem;margin-top:0.2rem;">
+        <label style="position:relative;display:inline-block;width:38px;height:20px;flex-shrink:0;">
+          <input type="checkbox" id="ce-skip" style="opacity:0;width:0;height:0;margin:0;">
+          <span id="ce-track" style="position:absolute;inset:0;border-radius:20px;background:#ccc;transition:background 0.2s;cursor:pointer;"
+                onclick="document.getElementById('ce-skip').click()"></span>
+          <span id="ce-thumb" style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:transform 0.2s;pointer-events:none;"></span>
+        </label>
+        <span id="ce-skip-label" style="font-size:0.88rem;color:#444;">Active</span>
+      </div>
+    </div>
+    <div id="ce-error" style="color:#e74c3c;font-size:0.82rem;margin-top:0.5rem;min-height:1rem;"></div>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem;">
+      <button class="secondary" onclick="closeCompanyEdit()">Cancel</button>
+      <button onclick="saveCompanyEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Stat Cards -->
 <div class="stat-grid">
   <div class="stat-card">
@@ -147,18 +179,105 @@
     el.innerHTML = rows;
   }
 
+  const companiesData = {};
+
   function renderCompanies(companies) {
     const el = document.getElementById('companies-list');
     if (companies.length === 0) {
       el.innerHTML = '<p class="text-muted">No companies yet. <a href="/companies/manage">Add one</a>.</p>';
       return;
     }
+    companies.forEach(c => { companiesData[c.id] = c; });
     const chips = companies.map(c =>
-      `<a href="${c.career_url}" target="_blank" class="company-chip">${c.name}</a>`
+      `<button class="company-chip${c.is_skipped ? ' skipped' : ''}" onclick="openCompanyEdit(${c.id})" title="Click to edit">${escH(c.name)}</button>`
     ).join('');
     el.innerHTML = `<div class="company-chips">${chips}</div>`;
   }
 
-  document.addEventListener('DOMContentLoaded', loadStats);
+  function escH(s) {
+    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function openCompanyEdit(id) {
+    const c = companiesData[id];
+    if (!c) return;
+    document.getElementById('ce-id').value = id;
+    document.getElementById('ce-name').value = c.name || '';
+    document.getElementById('ce-url').value = c.career_url || '';
+    const skipped = !!c.is_skipped;
+    document.getElementById('ce-skip').checked = skipped;
+    document.getElementById('ce-skip-label').textContent = skipped ? 'Skipped' : 'Active';
+    document.getElementById('ce-track').style.background = skipped ? '#f39c12' : '#ccc';
+    document.getElementById('ce-thumb').style.transform = skipped ? 'translateX(18px)' : 'none';
+    document.getElementById('ce-error').textContent = '';
+    document.getElementById('company-edit-modal').style.display = 'flex';
+    document.getElementById('ce-name').focus();
+  }
+
+  function closeCompanyEdit() {
+    document.getElementById('company-edit-modal').style.display = 'none';
+  }
+
+  async function saveCompanyEdit() {
+    const id = parseInt(document.getElementById('ce-id').value);
+    const name = document.getElementById('ce-name').value.trim();
+    const career_url = document.getElementById('ce-url').value.trim();
+    const skipWanted = document.getElementById('ce-skip').checked;
+    const errEl = document.getElementById('ce-error');
+    if (!name) { errEl.textContent = 'Name is required.'; return; }
+
+    const c = companiesData[id];
+    errEl.textContent = '';
+
+    try {
+      // Update name/url if changed
+      if (name !== c.name || career_url !== (c.career_url || '')) {
+        const r = await fetch(`/api/companies/${id}`, {
+          method: 'PUT',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({name, career_url})
+        });
+        const data = await r.json();
+        if (!r.ok) { errEl.textContent = data.detail || 'Save failed'; return; }
+        companiesData[id] = {...companiesData[id], ...data};
+      }
+
+      // Toggle skip if changed
+      if (skipWanted !== !!c.is_skipped) {
+        const r2 = await fetch(`/api/companies/${id}/skip`, {method: 'POST'});
+        const data2 = await r2.json();
+        if (!r2.ok) { errEl.textContent = data2.detail || 'Skip toggle failed'; return; }
+        companiesData[id] = {...companiesData[id], ...data2};
+      }
+
+      // Refresh chip
+      const btn = document.querySelector(`.company-chip[onclick="openCompanyEdit(${id})"]`);
+      if (btn) {
+        btn.textContent = companiesData[id].name;
+        btn.className = 'company-chip' + (companiesData[id].is_skipped ? ' skipped' : '');
+      }
+      closeCompanyEdit();
+    } catch(e) {
+      errEl.textContent = 'Error: ' + e.message;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadStats();
+
+    document.getElementById('ce-skip').addEventListener('change', function() {
+      document.getElementById('ce-skip-label').textContent = this.checked ? 'Skipped' : 'Active';
+      document.getElementById('ce-track').style.background = this.checked ? '#f39c12' : '#ccc';
+      document.getElementById('ce-thumb').style.transform = this.checked ? 'translateX(18px)' : 'none';
+    });
+
+    document.getElementById('company-edit-modal').addEventListener('click', function(e) {
+      if (e.target === this) closeCompanyEdit();
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeCompanyEdit();
+    });
+  });
 </script>
 {% endblock %}
