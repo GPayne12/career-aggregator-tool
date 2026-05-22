@@ -23,6 +23,9 @@ class CompanyUpdate(BaseModel):
     name: Optional[str] = None
     career_url: Optional[str] = None
     notes: Optional[str] = None
+    score_a: Optional[int] = None
+    score_m: Optional[int] = None
+    score_p: Optional[int] = None
 
 
 class CompanyResponse(BaseModel):
@@ -32,6 +35,17 @@ class CompanyResponse(BaseModel):
     notes: Optional[str] = None
     is_active: bool
     is_skipped: bool = False
+    score_a: Optional[int] = None
+    score_m: Optional[int] = None
+    score_p: Optional[int] = None
+
+
+def _to_response(c: Company) -> CompanyResponse:
+    return CompanyResponse(
+        id=c.id, name=c.name, career_url=c.career_url or "",
+        notes=c.notes, is_active=c.is_active, is_skipped=bool(c.is_skipped),
+        score_a=c.score_a, score_m=c.score_m, score_p=c.score_p,
+    )
 
 
 # ── Fixed-path routes first (must come before /{company_id}) ─────────────────
@@ -39,15 +53,13 @@ class CompanyResponse(BaseModel):
 @router.get("", response_model=List[CompanyResponse])
 def list_companies(db: Session = Depends(get_db)):
     companies = db.query(Company).filter(Company.is_active == True).all()
-    return [CompanyResponse(id=c.id, name=c.name, career_url=c.career_url,
-                            notes=c.notes, is_active=c.is_active, is_skipped=bool(c.is_skipped)) for c in companies]
+    return [_to_response(c) for c in companies]
 
 
 @router.get("/all", response_model=List[CompanyResponse])
 def list_all_companies(db: Session = Depends(get_db)):
     companies = db.query(Company).all()
-    return [CompanyResponse(id=c.id, name=c.name, career_url=c.career_url,
-                            notes=c.notes, is_active=c.is_active, is_skipped=bool(c.is_skipped)) for c in companies]
+    return [_to_response(c) for c in companies]
 
 
 @router.get("/discover-urls")
@@ -125,9 +137,7 @@ def toggle_company_skip(company_id: int, db: Session = Depends(get_db)):
     db_company.is_skipped = not bool(db_company.is_skipped)
     db.commit()
     db.refresh(db_company)
-    return CompanyResponse(id=db_company.id, name=db_company.name,
-                           career_url=db_company.career_url, notes=db_company.notes,
-                           is_active=db_company.is_active, is_skipped=bool(db_company.is_skipped))
+    return _to_response(db_company)
 
 
 @router.get("/{company_id}", response_model=CompanyResponse)
@@ -135,8 +145,7 @@ def get_company(company_id: int, db: Session = Depends(get_db)):
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
-    return CompanyResponse(id=company.id, name=company.name, career_url=company.career_url,
-                           notes=company.notes, is_active=company.is_active)
+    return _to_response(company)
 
 
 @router.post("", response_model=CompanyResponse, status_code=201)
@@ -150,9 +159,7 @@ def create_company(company: CompanyCreate, db: Session = Depends(get_db)):
     db.add(db_company)
     db.commit()
     db.refresh(db_company)
-    return CompanyResponse(id=db_company.id, name=db_company.name,
-                           career_url=db_company.career_url, notes=db_company.notes,
-                           is_active=db_company.is_active, is_skipped=bool(db_company.is_skipped))
+    return _to_response(db_company)
 
 
 @router.put("/{company_id}", response_model=CompanyResponse)
@@ -174,12 +181,16 @@ def update_company(company_id: int, company: CompanyUpdate, db: Session = Depend
         db_company.career_url = company.career_url
     if company.notes is not None:
         db_company.notes = company.notes
+    if company.score_a is not None:
+        db_company.score_a = company.score_a
+    if company.score_m is not None:
+        db_company.score_m = company.score_m
+    if company.score_p is not None:
+        db_company.score_p = company.score_p
 
     db.commit()
     db.refresh(db_company)
-    return CompanyResponse(id=db_company.id, name=db_company.name,
-                           career_url=db_company.career_url, notes=db_company.notes,
-                           is_active=db_company.is_active, is_skipped=bool(db_company.is_skipped))
+    return _to_response(db_company)
 
 
 @router.delete("/{company_id}", status_code=204)

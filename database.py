@@ -16,13 +16,18 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     """Create all tables in the database"""
     Base.metadata.create_all(bind=engine)
-    # Add is_skipped column to existing databases that predate this column
     with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE companies ADD COLUMN is_skipped BOOLEAN NOT NULL DEFAULT 0"))
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
+        for stmt in [
+            "ALTER TABLE companies ADD COLUMN is_skipped BOOLEAN NOT NULL DEFAULT 0",
+            "ALTER TABLE companies ADD COLUMN score_a INTEGER",
+            "ALTER TABLE companies ADD COLUMN score_m INTEGER",
+            "ALTER TABLE companies ADD COLUMN score_p INTEGER",
+        ]:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
     print(f"Database initialized at {DATABASE_URL}")
 
 

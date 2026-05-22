@@ -17,6 +17,9 @@ class Company(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
     is_skipped = Column(Boolean, default=False)
+    score_a = Column(Integer, nullable=True)
+    score_m = Column(Integer, nullable=True)
+    score_p = Column(Integer, nullable=True)
 
     def to_dict(self):
         return {
@@ -26,6 +29,9 @@ class Company(Base):
             "notes": self.notes,
             "is_active": self.is_active,
             "is_skipped": self.is_skipped,
+            "score_a": self.score_a,
+            "score_m": self.score_m,
+            "score_p": self.score_p,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

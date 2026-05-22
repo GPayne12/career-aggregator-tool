@@ -36,8 +36,73 @@
 
 <div id="companies-list"></div>
 
+<style>
+  .sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+  .sortable:hover { background:#f0f3f5; }
+  .sort-ind { font-size:0.75rem; color:#aaa; margin-left:0.25rem; }
+  th.col-score { width:38px; text-align:center; }
+  td.col-score { text-align:center; font-size:0.82rem; color:#555; }
+  td.col-score input { width:36px; text-align:center; padding:0.2rem; margin:0; font-size:0.82rem; }
+</style>
+
 <script>
   const companiesData = {};
+  let companiesList  = [];
+  let sortCol = 'name';
+  let sortDir = 1;
+
+  function sortBy(col) {
+    if (sortCol === col) {
+      sortDir *= -1;
+    } else {
+      sortCol = col;
+      sortDir = 1;
+    }
+    renderTable();
+  }
+
+  function sortInd(col) {
+    if (sortCol !== col) return '⇅';
+    return sortDir === 1 ? '↑' : '↓';
+  }
+
+  function scoreVal(c, col) {
+    const v = c[col];
+    return v == null ? -1 : v;
+  }
+
+  function renderTable() {
+    const sorted = [...companiesList].sort((a, b) => {
+      let av, bv;
+      if (sortCol === 'name') {
+        av = (a.name || '').toLowerCase();
+        bv = (b.name || '').toLowerCase();
+      } else if (sortCol === 'career_url') {
+        av = a.career_url ? 1 : 0;
+        bv = b.career_url ? 1 : 0;
+      } else if (sortCol === 'is_skipped') {
+        av = a.is_skipped ? 1 : 0;
+        bv = b.is_skipped ? 1 : 0;
+      } else {
+        av = scoreVal(a, sortCol);
+        bv = scoreVal(b, sortCol);
+      }
+      if (av < bv) return -sortDir;
+      if (av > bv) return sortDir;
+      return 0;
+    });
+
+    const tbody = document.getElementById('companies-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    sorted.forEach(c => tbody.appendChild(buildRow(c)));
+
+    // Update sort indicators
+    ['name','career_url','score_a','score_m','score_p','is_skipped'].forEach(col => {
+      const el = document.querySelector(`.sort-ind[data-col="${col}"]`);
+      if (el) el.textContent = sortInd(col);
+    });
+  }
 
   function loadCompanies() {
     fetch('/api/companies')
@@ -48,32 +113,36 @@
           list.innerHTML = '<p class="text-muted">No companies yet.</p>';
           return;
         }
+        companiesList = companies;
         companies.forEach(c => { companiesData[c.id] = c; });
+
         const skipped = companies.filter(c => c.is_skipped).length;
-        const missing = companies.filter(c => !c.career_url).length;
-        const missingBtn = missing > 0
-          ? `<button class="secondary" onclick="discoverUrls()" id="discover-btn" style="font-size:0.85rem;padding:0.4rem 0.9rem;">Find ${missing} missing URL${missing===1?'':'s'}</button>`
-          : '';
+        const countHtml = skipped > 0
+          ? `${companies.length} companies &nbsp;&middot;&nbsp; <span style="color:#f39c12;">${skipped} skipped</span>`
+          : `${companies.length} companies`;
+
         list.innerHTML = `
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
-              <span class="text-muted" style="font-size:0.9rem;" id="companies-count"></span>
-              ${missingBtn}
+              <span class="text-muted" style="font-size:0.9rem;" id="companies-count">${countHtml}</span>
             </div>
-            <div id="discover-status"></div>
             <table>
-              <thead><tr><th>Company</th><th>Career URL</th><th>Actions</th></tr></thead>
+              <thead>
+                <tr>
+                  <th class="sortable" onclick="sortBy('name')">Company <span class="sort-ind" data-col="name">${sortInd('name')}</span></th>
+                  <th class="sortable" onclick="sortBy('career_url')">Career Page <span class="sort-ind" data-col="career_url">${sortInd('career_url')}</span></th>
+                  <th class="col-score sortable" onclick="sortBy('score_a')" title="A score">A <span class="sort-ind" data-col="score_a">${sortInd('score_a')}</span></th>
+                  <th class="col-score sortable" onclick="sortBy('score_m')" title="M score">M <span class="sort-ind" data-col="score_m">${sortInd('score_m')}</span></th>
+                  <th class="col-score sortable" onclick="sortBy('score_p')" title="P score">P <span class="sort-ind" data-col="score_p">${sortInd('score_p')}</span></th>
+                  <th class="sortable" onclick="sortBy('is_skipped')">Status <span class="sort-ind" data-col="is_skipped">${sortInd('is_skipped')}</span></th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
               <tbody id="companies-tbody"></tbody>
             </table>
           </div>`;
-        const countEl = document.getElementById('companies-count');
-        if (countEl) {
-          countEl.innerHTML = skipped > 0
-            ? `${companies.length} companies &nbsp;&middot;&nbsp; <span style="color:#f39c12;">${skipped} skipped</span>`
-            : `${companies.length} companies`;
-        }
-        const tbody = document.getElementById('companies-tbody');
-        companies.forEach(c => tbody.appendChild(buildRow(c)));
+
+        renderTable();
       });
   }
 
@@ -83,20 +152,26 @@
     if (company.is_skipped) tr.style.opacity = '0.55';
 
     const urlCell = company.career_url
-      ? `<a href="${escH(company.career_url)}" target="_blank" style="font-size:0.85rem;word-break:break-all;">${escH(company.career_url)}</a>`
+      ? `<a href="${escH(company.career_url)}" target="_blank" style="font-size:0.85rem;">Link ↗</a>`
       : `<span class="text-muted">—</span>`;
 
     const skipBadge = company.is_skipped
-      ? `<span style="font-size:0.72rem;background:#f39c12;color:white;padding:0.1rem 0.45rem;border-radius:10px;margin-left:0.4rem;font-weight:600;vertical-align:middle;">Skipped</span>`
-      : '';
+      ? `<span style="font-size:0.72rem;background:#f39c12;color:white;padding:0.1rem 0.45rem;border-radius:10px;font-weight:600;">Skipped</span>`
+      : `<span style="font-size:0.72rem;color:#aaa;">Active</span>`;
 
     const skipBtn = company.is_skipped
       ? `<button class="icon-button" style="color:#f39c12;" onclick="toggleSkip(${company.id})">Unskip</button>`
       : `<button class="icon-button" onclick="toggleSkip(${company.id})">Skip</button>`;
 
+    const scoreCell = v => v != null ? v : '<span class="text-muted">—</span>';
+
     tr.innerHTML = `
-      <td>${escH(company.name)}${skipBadge}</td>
+      <td>${escH(company.name)}</td>
       <td>${urlCell}</td>
+      <td class="col-score">${scoreCell(company.score_a)}</td>
+      <td class="col-score">${scoreCell(company.score_m)}</td>
+      <td class="col-score">${scoreCell(company.score_p)}</td>
+      <td>${skipBadge}</td>
       <td>
         <button class="icon-button" onclick="startEdit(${company.id})">Edit</button>
         ${skipBtn}
@@ -111,16 +186,9 @@
       .then(({ ok, data }) => {
         if (!ok) { alert(data.detail || 'Error toggling skip'); return; }
         companiesData[id] = data;
-        const tr = document.getElementById(`row-${id}`);
-        if (tr) tr.replaceWith(buildRow(data));
-        const skipped = Object.values(companiesData).filter(c => c.is_skipped).length;
-        const countEl = document.getElementById('companies-count');
-        if (countEl) {
-          const total = Object.keys(companiesData).length;
-          countEl.innerHTML = skipped > 0
-            ? `${total} companies &nbsp;&middot;&nbsp; <span style="color:#f39c12;">${skipped} skipped</span>`
-            : `${total} companies`;
-        }
+        companiesList = companiesList.map(c => c.id === id ? data : c);
+        renderTable();
+        updateCount();
       })
       .catch(e => alert('Error: ' + e));
   }
@@ -133,6 +201,10 @@
     tr.innerHTML = `
       <td><input type="text" id="edit-name-${id}" value="${escH(c.name)}" style="margin:0;width:100%;"></td>
       <td><input type="url" id="edit-url-${id}" value="${escH(c.career_url||'')}" style="margin:0;width:100%;"></td>
+      <td class="col-score"><input type="number" id="edit-a-${id}" value="${c.score_a ?? ''}" min="1" max="10"></td>
+      <td class="col-score"><input type="number" id="edit-m-${id}" value="${c.score_m ?? ''}" min="1" max="10"></td>
+      <td class="col-score"><input type="number" id="edit-p-${id}" value="${c.score_p ?? ''}" min="1" max="10"></td>
+      <td></td>
       <td>
         <button class="icon-button" onclick="saveEdit(${id})">Save</button>
         <button class="icon-button" onclick="cancelEdit(${id})">Cancel</button>
@@ -146,20 +218,29 @@
   }
 
   function saveEdit(id) {
-    const name = document.getElementById(`edit-name-${id}`).value.trim();
+    const name      = document.getElementById(`edit-name-${id}`).value.trim();
     const career_url = document.getElementById(`edit-url-${id}`).value.trim();
+    const aRaw      = document.getElementById(`edit-a-${id}`).value.trim();
+    const mRaw      = document.getElementById(`edit-m-${id}`).value.trim();
+    const pRaw      = document.getElementById(`edit-p-${id}`).value.trim();
     if (!name) return;
+
+    const body = { name, career_url };
+    if (aRaw !== '') body.score_a = parseInt(aRaw);
+    if (mRaw !== '') body.score_m = parseInt(mRaw);
+    if (pRaw !== '') body.score_p = parseInt(pRaw);
+
     fetch(`/api/companies/${id}`, {
       method: 'PUT',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({name, career_url})
+      body: JSON.stringify(body)
     })
     .then(r => r.json().then(data => ({ok: r.ok, data})))
     .then(({ok, data}) => {
       if (!ok) { alert(data.detail || 'Save failed'); return; }
       companiesData[id] = data;
-      const tr = document.getElementById(`row-${id}`);
-      if (tr) tr.replaceWith(buildRow(data));
+      companiesList = companiesList.map(c => c.id === id ? data : c);
+      renderTable();
     })
     .catch(e => alert('Error: ' + e));
   }
@@ -171,13 +252,9 @@
       .then(r => {
         if (r.ok || r.status === 204) {
           delete companiesData[id];
-          const tr = document.getElementById(`row-${id}`);
-          if (tr) tr.remove();
-          const countEl = document.querySelector('#companies-list .text-muted');
-          if (countEl) {
-            const remaining = Object.keys(companiesData).length;
-            countEl.textContent = `${remaining} active`;
-          }
+          companiesList = companiesList.filter(c => c.id !== id);
+          renderTable();
+          updateCount();
         } else {
           alert('Error deleting company');
         }
@@ -185,63 +262,18 @@
       .catch(e => alert('Error deleting company'));
   }
 
-  function escH(s) {
-    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  function updateCount() {
+    const countEl = document.getElementById('companies-count');
+    if (!countEl) return;
+    const total = companiesList.length;
+    const skipped = companiesList.filter(c => c.is_skipped).length;
+    countEl.innerHTML = skipped > 0
+      ? `${total} companies &nbsp;&middot;&nbsp; <span style="color:#f39c12;">${skipped} skipped</span>`
+      : `${total} companies`;
   }
 
-  function discoverUrls() {
-    const btn = document.getElementById('discover-btn');
-    const statusEl = document.getElementById('discover-status');
-    if (!btn || !statusEl) return;
-    btn.disabled = true;
-    btn.textContent = 'Finding…';
-    statusEl.innerHTML = `
-      <div class="scrape-progress" style="margin-bottom:0.75rem;">
-        <div class="progress-bar-track"><div class="progress-bar-fill" id="disc-bar"></div></div>
-        <div class="progress-label" id="disc-label">Starting…</div>
-        <div class="scrape-log">
-          <table><thead><tr><th>Company</th><th>Result</th></tr></thead>
-          <tbody id="disc-tbody"></tbody></table>
-        </div>
-      </div>`;
-
-    const bar   = document.getElementById('disc-bar');
-    const label = document.getElementById('disc-label');
-    const tbody = document.getElementById('disc-tbody');
-    const source = new EventSource('/api/companies/discover-urls');
-
-    source.onmessage = function(e) {
-      const data = JSON.parse(e.data);
-      if (data.type === 'start') {
-        label.textContent = `Checking 0 of ${data.total} companies…`;
-      } else if (data.type === 'progress') {
-        const pct = Math.round((data.index / data.total) * 100);
-        bar.style.width = pct + '%';
-        label.textContent = `Checking ${data.index} of ${data.total} companies…`;
-        const result = data.url
-          ? `<a href="${data.url}" target="_blank" style="font-size:0.82rem;word-break:break-all;">${data.url}</a>`
-          : `<span class="text-muted">Not found</span>`;
-        tbody.insertAdjacentHTML('afterbegin',
-          `<tr><td>${data.company}</td><td>${result}</td></tr>`);
-      } else if (data.type === 'done') {
-        source.close();
-        bar.style.width = '100%';
-        bar.classList.add('complete');
-        label.innerHTML = `Done — <strong>${data.found}</strong> of ${data.total} URLs found`;
-        btn.remove();
-        loadCompanies();
-      } else if (data.type === 'error') {
-        source.close();
-        label.innerHTML = `<span class="text-danger">${data.message}</span>`;
-        btn.disabled = false;
-        btn.textContent = 'Retry';
-      }
-    };
-    source.onerror = function() {
-      source.close();
-      label.innerHTML = '<span class="text-danger">Connection lost.</span>';
-      btn.disabled = false;
-    };
+  function escH(s) {
+    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   document.getElementById('add-company-form').addEventListener('submit', function(e) {
@@ -264,7 +296,7 @@
     .then(({ok, data}) => {
       if (!ok) throw new Error(data.detail || 'Unknown error');
       const urlNote = data.career_url
-        ? ` — <a href="${data.career_url}" target="_blank">${data.career_url}</a>`
+        ? ` — <a href="${data.career_url}" target="_blank">Link ↗</a>`
         : ' (no URL — add one via Edit)';
       status.innerHTML = `<span class="text-success">Added${urlNote}</span>`;
       document.getElementById('company-name').value = '';
@@ -289,7 +321,7 @@
     }
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
-    status.innerHTML = '<span class="text-muted">Uploading and discovering URLs…</span>';
+    status.innerHTML = '<span class="text-muted">Uploading…</span>';
 
     fetch('/api/companies/upload-csv', {method:'POST', body: formData})
       .then(r => r.json().then(data => ({ok: r.ok, data})))
