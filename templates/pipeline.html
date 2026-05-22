@@ -3,119 +3,370 @@
 {% block title %}Application Pipeline - Career Aggregator{% endblock %}
 
 {% block content %}
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">
   <div class="page-title" style="margin-bottom:0;">Application Pipeline</div>
   <button onclick="exportPipelineCSV()" class="secondary" style="font-size:0.85rem; padding:0.35rem 0.85rem;">Export CSV</button>
 </div>
 
-<div id="pipeline" class="pipeline-container">
-  <p class="text-muted text-center" style="grid-column: 1/-1;">Loading pipeline...</p>
+<style>
+  .kanban-board {
+    display: flex;
+    gap: 0.85rem;
+    overflow-x: auto;
+    align-items: flex-start;
+    padding-bottom: 1.5rem;
+    margin: 0 -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .kanban-col {
+    flex: 0 0 268px;
+    background: #f0f2f5;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .kanban-col.drag-over {
+    background: #dde5f5;
+    outline: 2px dashed #3498db;
+    outline-offset: -2px;
+  }
+
+  .kanban-col-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.8rem 0.85rem 0.6rem;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    border-radius: 10px 10px 0 0;
+  }
+
+  .kanban-col-stripe {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .kanban-col-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #555;
+    flex: 1;
+  }
+
+  .kanban-col-count {
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: rgba(0,0,0,0.09);
+    color: #666;
+    border-radius: 10px;
+    padding: 0.1rem 0.5rem;
+    min-width: 22px;
+    text-align: center;
+  }
+
+  .kanban-cards {
+    padding: 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 120px;
+    overflow-y: auto;
+    max-height: 68vh;
+  }
+
+  .kanban-empty {
+    text-align: center;
+    color: #bbb;
+    font-size: 0.8rem;
+    padding: 1.5rem 0.5rem;
+    border: 2px dashed #d8dce2;
+    border-radius: 8px;
+    pointer-events: none;
+  }
+
+  .k-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.04);
+    border-top: 3px solid #3498db;
+    padding: 0.7rem 0.75rem 0.6rem;
+    cursor: grab;
+    transition: box-shadow 0.15s, transform 0.1s;
+    position: relative;
+  }
+
+  .k-card:hover {
+    box-shadow: 0 4px 10px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
+    transform: translateY(-1px);
+  }
+
+  .k-card:active { cursor: grabbing; }
+
+  .k-card.dragging {
+    opacity: 0.3;
+    transform: scale(0.96);
+    box-shadow: none;
+  }
+
+  .k-card.applied      { border-top-color: #27ae60; }
+  .k-card.rejected     { border-top-color: #e74c3c; opacity: 0.7; }
+  .k-card.interviewing { border-top-color: #f39c12; }
+  .k-card.offer        { border-top-color: #8e44ad; }
+
+  .k-drag-handle {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.5rem;
+    color: #d0d3d8;
+    font-size: 0.85rem;
+    line-height: 1;
+    pointer-events: none;
+    letter-spacing: -1px;
+  }
+
+  .k-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #2c3e50;
+    line-height: 1.35;
+    padding-right: 1rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .k-company {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #555;
+    margin-bottom: 0.2rem;
+  }
+
+  .k-meta {
+    font-size: 0.76rem;
+    color: #95a5a6;
+    line-height: 1.4;
+    margin-bottom: 0.1rem;
+  }
+
+  .k-notes {
+    font-size: 0.76rem;
+    color: #7f8c8d;
+    font-style: italic;
+    margin-top: 0.35rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid #f2f3f5;
+    line-height: 1.4;
+  }
+
+  .k-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.55rem;
+    padding-top: 0.45rem;
+    border-top: 1px solid #f2f3f5;
+  }
+
+  .k-link {
+    font-size: 0.75rem;
+    color: #3498db;
+    text-decoration: none;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .k-link:hover { text-decoration: underline; }
+
+  .k-move {
+    font-size: 0.73rem;
+    padding: 0.15rem 0.25rem;
+    border: 1px solid #e0e2e6;
+    border-radius: 4px;
+    color: #666;
+    background: white;
+    cursor: pointer;
+    width: auto;
+  }
+
+  .k-del {
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: #ccc;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.1rem 0.3rem;
+    border-radius: 4px;
+    line-height: 1;
+    transition: color 0.15s, background 0.15s;
+  }
+  .k-del:hover { color: #e74c3c; background: #fdf0ef; }
+</style>
+
+<div id="pipeline" class="kanban-board">
+  <p class="text-muted" style="padding:1rem;">Loading pipeline…</p>
 </div>
 
 <script>
-  let pipelineData = null;
+  let pipelineData   = null;
+  let draggingJobId  = null;
+  let draggingStatus = null;
+
+  const STATUS_META = {
+    saved:        { label: 'Saved',        color: '#3498db' },
+    applied:      { label: 'Applied',      color: '#27ae60' },
+    interviewing: { label: 'Interviewing', color: '#f39c12' },
+    offer:        { label: 'Offer',        color: '#8e44ad' },
+    rejected:     { label: 'Rejected',     color: '#e74c3c' },
+  };
+
+  const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 
   function loadPipeline() {
     fetch('/api/pipeline')
       .then(r => r.json())
-      .then(data => {
-        pipelineData = data;
-        const pipeline = document.getElementById('pipeline');
-        pipeline.innerHTML = '';
-
-        const statuses = ['saved', 'applied', 'rejected', 'interviewing', 'offer'];
-
-        statuses.forEach(status => {
-          const column = document.createElement('div');
-          column.className = `pipeline-column`;
-
-          const statusCount = data[status].length;
-          column.innerHTML = `<h3>${status.charAt(0).toUpperCase() + status.slice(1)} (${statusCount})</h3>`;
-
-          if (data[status].length === 0) {
-            column.innerHTML += '<p class="text-muted">No jobs</p>';
-          } else {
-            data[status].forEach(job => {
-              const card = document.createElement('div');
-              card.className = `job-card ${status}`;
-              card.innerHTML = `
-                <h4>${job.title}</h4>
-                <div class="meta">${job.company}</div>
-                <div class="meta">${job.location || 'Remote'}</div>
-                ${job.salary ? `<div class="meta">${job.salary}</div>` : ''}
-                <div class="meta" style="font-size: 0.85rem;">Saved: ${new Date(job.saved_date).toLocaleDateString()}</div>
-                ${job.notes ? `<div class="meta" style="font-style: italic;">${job.notes}</div>` : ''}
-                <div style="margin-top: 0.75rem;">
-                  <a href="${job.url}" target="_blank" style="display: inline-block; margin-right: 0.5rem;">View Listing</a>
-                  ${status !== 'offer' && status !== 'rejected' ? `
-                    <select onchange="updateJobStatus(${job.id}, this.value); this.value='';" style="width: 100px; padding: 0.25rem;">
-                      <option value="">Move to...</option>
-                      ${status !== 'applied' ? '<option value="applied">Applied</option>' : ''}
-                      ${status !== 'rejected' ? '<option value="rejected">Rejected</option>' : ''}
-                      ${status !== 'interviewing' ? '<option value="interviewing">Interviewing</option>' : ''}
-                      ${status !== 'offer' ? '<option value="offer">Offer</option>' : ''}
-                    </select>
-                  ` : ''}
-                  <button class="icon-button" onclick="deleteJob(${job.id});" style="float: right;">Delete</button>
-                </div>
-              `;
-              column.appendChild(card);
-            });
-          }
-
-          pipeline.appendChild(column);
-        });
-      })
-      .catch(e => {
-        console.error('Error loading pipeline:', e);
-        document.getElementById('pipeline').innerHTML = '<p class="text-danger">Error loading pipeline</p>';
+      .then(data => { pipelineData = data; renderBoard(); })
+      .catch(() => {
+        document.getElementById('pipeline').innerHTML =
+          '<p class="text-danger" style="padding:1rem;">Error loading pipeline</p>';
       });
+  }
+
+  function renderBoard() {
+    const board = document.getElementById('pipeline');
+    board.innerHTML = '';
+
+    STATUSES.forEach(status => {
+      const jobs = pipelineData[status] || [];
+      const meta = STATUS_META[status];
+
+      const col = document.createElement('div');
+      col.className = 'kanban-col';
+      col.dataset.status = status;
+
+      // Header
+      col.innerHTML = `
+        <div class="kanban-col-header">
+          <span class="kanban-col-stripe" style="background:${meta.color};"></span>
+          <span class="kanban-col-title">${meta.label}</span>
+          <span class="kanban-col-count" id="count-${status}">${jobs.length}</span>
+        </div>`;
+
+      // Cards container
+      const cardsEl = document.createElement('div');
+      cardsEl.className = 'kanban-cards';
+
+      if (jobs.length === 0) {
+        cardsEl.innerHTML = '<div class="kanban-empty">Drop cards here</div>';
+      } else {
+        jobs.forEach(job => cardsEl.appendChild(buildCard(job, status)));
+      }
+
+      // Drop events on the whole column
+      col.addEventListener('dragover', e => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        col.classList.add('drag-over');
+      });
+      col.addEventListener('dragleave', e => {
+        if (!col.contains(e.relatedTarget)) col.classList.remove('drag-over');
+      });
+      col.addEventListener('drop', e => {
+        e.preventDefault();
+        col.classList.remove('drag-over');
+        if (draggingJobId && col.dataset.status !== draggingStatus) {
+          updateJobStatus(draggingJobId, col.dataset.status);
+        }
+      });
+
+      col.appendChild(cardsEl);
+      board.appendChild(col);
+    });
+  }
+
+  function buildCard(job, status) {
+    const card = document.createElement('div');
+    card.className = `k-card ${status}`;
+    card.dataset.jobId = job.id;
+    card.draggable = true;
+
+    const saved = job.saved_date ? new Date(job.saved_date).toLocaleDateString() : '—';
+
+    const moveOpts = STATUSES
+      .filter(s => s !== status)
+      .map(s => `<option value="${s}">${STATUS_META[s].label}</option>`)
+      .join('');
+
+    card.innerHTML = `
+      <span class="k-drag-handle">⠿⠿</span>
+      <div class="k-title">${escH(job.title)}</div>
+      <div class="k-company">${escH(job.company)}</div>
+      ${job.location ? `<div class="k-meta">📍 ${escH(job.location)}</div>` : ''}
+      ${job.salary   ? `<div class="k-meta">💰 ${escH(job.salary)}</div>`   : ''}
+      <div class="k-meta">Saved ${saved}</div>
+      ${job.notes    ? `<div class="k-notes">${escH(job.notes)}</div>`       : ''}
+      <div class="k-actions">
+        <a class="k-link" href="${escH(job.url)}" target="_blank">View ↗</a>
+        <select class="k-move" onchange="updateJobStatus(${job.id}, this.value); this.value='';">
+          <option value="">Move…</option>
+          ${moveOpts}
+        </select>
+        <button class="k-del" onclick="deleteJob(${job.id})" title="Remove from pipeline">✕</button>
+      </div>`;
+
+    card.addEventListener('dragstart', e => {
+      draggingJobId  = job.id;
+      draggingStatus = status;
+      e.dataTransfer.effectAllowed = 'move';
+      // slight delay so the card renders as "dragging" after the ghost is captured
+      requestAnimationFrame(() => card.classList.add('dragging'));
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      draggingJobId  = null;
+      draggingStatus = null;
+    });
+
+    return card;
   }
 
   function updateJobStatus(jobId, newStatus) {
     if (!newStatus) return;
-
     fetch(`/api/pipeline/${jobId}`, {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({status: newStatus})
+      body: JSON.stringify({status: newStatus}),
     })
     .then(r => r.json())
     .then(() => loadPipeline())
-    .catch(e => {
-      console.error('Error updating job:', e);
-      alert('Error updating job');
-    });
+    .catch(() => alert('Error updating job status'));
   }
 
   function deleteJob(jobId) {
     if (!confirm('Remove this job from pipeline?')) return;
-
     fetch(`/api/pipeline/${jobId}`, {method: 'DELETE'})
       .then(() => loadPipeline())
-      .catch(e => {
-        console.error('Error deleting job:', e);
-        alert('Error deleting job');
-      });
+      .catch(() => alert('Error removing job'));
   }
+
+  // ── Export CSV ────────────────────────────────────────────────────────────
 
   function exportPipelineCSV() {
     if (!pipelineData) { alert('No pipeline data loaded yet.'); return; }
-
-    const statuses = ['saved', 'applied', 'rejected', 'interviewing', 'offer'];
-    const all = statuses.flatMap(s => (pipelineData[s] || []).map(j => ({...j, status: s})));
+    const all = STATUSES.flatMap(s => (pipelineData[s] || []).map(j => ({...j, status: s})));
     if (!all.length) { alert('Pipeline is empty.'); return; }
-
     const lines = [['Title','Company','Location','Salary','Status','Saved Date','Applied Date','Notes','URL'].join(',')];
     all.forEach(j => lines.push([
       csvCell(j.title), csvCell(j.company), csvCell(j.location), csvCell(j.salary),
       csvCell(j.status),
-      csvCell(j.saved_date  ? new Date(j.saved_date).toLocaleDateString()  : ''),
+      csvCell(j.saved_date   ? new Date(j.saved_date).toLocaleDateString()   : ''),
       csvCell(j.applied_date ? new Date(j.applied_date).toLocaleDateString() : ''),
-      csvCell(j.notes),
-      csvCell(j.url),
+      csvCell(j.notes), csvCell(j.url),
     ].join(',')));
-
     const a = Object.assign(document.createElement('a'), {
       href: URL.createObjectURL(new Blob([lines.join('\n')], {type: 'text/csv;charset=utf-8;'})),
       download: 'pipeline_export.csv',
@@ -124,9 +375,10 @@
     URL.revokeObjectURL(a.href);
   }
 
-  function csvCell(v) {
-    const s = (v == null ? '' : String(v)).replace(/"/g, '""');
-    return `"${s}"`;
+  function csvCell(v) { const s = (v == null ? '' : String(v)).replace(/"/g, '""'); return `"${s}"`; }
+
+  function escH(s) {
+    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   document.addEventListener('DOMContentLoaded', loadPipeline);
