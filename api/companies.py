@@ -177,6 +177,10 @@ def update_company(company_id: int, company: CompanyUpdate, db: Session = Depend
                                 detail=f"Company '{company.name}' already exists")
         db_company.name = company.name
 
+    for field, val in [('score_a', company.score_a), ('score_m', company.score_m), ('score_p', company.score_p)]:
+        if val is not None and not (0 <= val <= 3):
+            raise HTTPException(status_code=400, detail=f"{field} must be between 0 and 3")
+
     if company.career_url is not None:
         db_company.career_url = company.career_url
     if company.notes is not None:

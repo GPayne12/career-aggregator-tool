@@ -131,9 +131,9 @@
                 <tr>
                   <th class="sortable" onclick="sortBy('name')">Company <span class="sort-ind" data-col="name">${sortInd('name')}</span></th>
                   <th class="sortable" onclick="sortBy('career_url')">Career Page <span class="sort-ind" data-col="career_url">${sortInd('career_url')}</span></th>
-                  <th class="col-score sortable" onclick="sortBy('score_a')" title="A score">A <span class="sort-ind" data-col="score_a">${sortInd('score_a')}</span></th>
-                  <th class="col-score sortable" onclick="sortBy('score_m')" title="M score">M <span class="sort-ind" data-col="score_m">${sortInd('score_m')}</span></th>
-                  <th class="col-score sortable" onclick="sortBy('score_p')" title="P score">P <span class="sort-ind" data-col="score_p">${sortInd('score_p')}</span></th>
+                  <th class="col-score sortable" onclick="sortBy('score_a')" title="Advocacy: internal connections at this company (0–3)">A <span class="sort-ind" data-col="score_a">${sortInd('score_a')}</span></th>
+                  <th class="col-score sortable" onclick="sortBy('score_m')" title="Motivation: personal interest in this company (0–3)">M <span class="sort-ind" data-col="score_m">${sortInd('score_m')}</span></th>
+                  <th class="col-score sortable" onclick="sortBy('score_p')" title="Postings: relevant active job postings (0–3)">P <span class="sort-ind" data-col="score_p">${sortInd('score_p')}</span></th>
                   <th class="sortable" onclick="sortBy('is_skipped')">Status <span class="sort-ind" data-col="is_skipped">${sortInd('is_skipped')}</span></th>
                   <th>Actions</th>
                 </tr>
@@ -201,9 +201,9 @@
     tr.innerHTML = `
       <td><input type="text" id="edit-name-${id}" value="${escH(c.name)}" style="margin:0;width:100%;"></td>
       <td><input type="url" id="edit-url-${id}" value="${escH(c.career_url||'')}" style="margin:0;width:100%;"></td>
-      <td class="col-score"><input type="number" id="edit-a-${id}" value="${c.score_a ?? ''}" min="1" max="10"></td>
-      <td class="col-score"><input type="number" id="edit-m-${id}" value="${c.score_m ?? ''}" min="1" max="10"></td>
-      <td class="col-score"><input type="number" id="edit-p-${id}" value="${c.score_p ?? ''}" min="1" max="10"></td>
+      <td class="col-score"><input type="number" id="edit-a-${id}" value="${c.score_a ?? ''}" min="0" max="3" title="Advocacy: 0–3 internal connections"></td>
+      <td class="col-score"><input type="number" id="edit-m-${id}" value="${c.score_m ?? ''}" min="0" max="3" title="Motivation: 0–3 personal interest"></td>
+      <td class="col-score"><input type="number" id="edit-p-${id}" value="${c.score_p ?? ''}" min="0" max="3" title="Postings: 0–3 relevant active listings"></td>
       <td></td>
       <td>
         <button class="icon-button" onclick="saveEdit(${id})">Save</button>
