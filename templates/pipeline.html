@@ -9,19 +9,21 @@
 </div>
 
 <style>
+  /* ── Main board ────────────────────────────────────────────────────────── */
   .kanban-board {
     display: flex;
     gap: 0.85rem;
     overflow-x: auto;
     align-items: flex-start;
-    padding-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
     margin: 0 -1rem;
     padding-left: 1rem;
     padding-right: 1rem;
   }
 
   .kanban-col {
-    flex: 0 0 268px;
+    flex: 1 1 0;
+    min-width: 220px;
     background: #f0f2f5;
     border-radius: 10px;
     display: flex;
@@ -75,9 +77,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    min-height: 120px;
+    min-height: 100px;
     overflow-y: auto;
-    max-height: 68vh;
+    max-height: 62vh;
   }
 
   .kanban-empty {
@@ -90,6 +92,38 @@
     pointer-events: none;
   }
 
+  /* ── Rejected section ──────────────────────────────────────────────────── */
+  .rejected-section {
+    margin-top: 1rem;
+    background: #f0f2f5;
+    border-radius: 10px;
+  }
+
+  .rejected-section.drag-over {
+    background: #fdf0ef;
+    outline: 2px dashed #e74c3c;
+    outline-offset: -2px;
+  }
+
+  .rejected-cards {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding: 0.6rem;
+    min-height: 80px;
+    align-items: flex-start;
+  }
+
+  .rejected-cards .kanban-empty {
+    flex: 1;
+  }
+
+  /* Cards in rejected are a fixed width so they sit neatly in the row */
+  .rejected-cards .k-card {
+    flex: 0 0 248px;
+  }
+
+  /* ── Cards ─────────────────────────────────────────────────────────────── */
   .k-card {
     background: white;
     border-radius: 8px;
@@ -130,38 +164,10 @@
     letter-spacing: -1px;
   }
 
-  .k-title {
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: #2c3e50;
-    line-height: 1.35;
-    padding-right: 1rem;
-    margin-bottom: 0.25rem;
-  }
-
-  .k-company {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #555;
-    margin-bottom: 0.2rem;
-  }
-
-  .k-meta {
-    font-size: 0.76rem;
-    color: #95a5a6;
-    line-height: 1.4;
-    margin-bottom: 0.1rem;
-  }
-
-  .k-notes {
-    font-size: 0.76rem;
-    color: #7f8c8d;
-    font-style: italic;
-    margin-top: 0.35rem;
-    padding-top: 0.35rem;
-    border-top: 1px solid #f2f3f5;
-    line-height: 1.4;
-  }
+  .k-title   { font-size: 0.88rem; font-weight: 600; color: #2c3e50; line-height: 1.35; padding-right: 1rem; margin-bottom: 0.25rem; }
+  .k-company { font-size: 0.8rem; font-weight: 500; color: #555; margin-bottom: 0.2rem; }
+  .k-meta    { font-size: 0.76rem; color: #95a5a6; line-height: 1.4; margin-bottom: 0.1rem; }
+  .k-notes   { font-size: 0.76rem; color: #7f8c8d; font-style: italic; margin-top: 0.35rem; padding-top: 0.35rem; border-top: 1px solid #f2f3f5; line-height: 1.4; }
 
   .k-actions {
     display: flex;
@@ -172,13 +178,7 @@
     border-top: 1px solid #f2f3f5;
   }
 
-  .k-link {
-    font-size: 0.75rem;
-    color: #3498db;
-    text-decoration: none;
-    font-weight: 500;
-    white-space: nowrap;
-  }
+  .k-link { font-size: 0.75rem; color: #3498db; text-decoration: none; font-weight: 500; white-space: nowrap; }
   .k-link:hover { text-decoration: underline; }
 
   .k-move {
@@ -207,8 +207,21 @@
   .k-del:hover { color: #e74c3c; background: #fdf0ef; }
 </style>
 
+<!-- Main 4-column kanban board -->
 <div id="pipeline" class="kanban-board">
   <p class="text-muted" style="padding:1rem;">Loading pipeline…</p>
+</div>
+
+<!-- Rejected tray — full width below the board -->
+<div id="rejected-section" class="rejected-section" style="display:none;">
+  <div class="kanban-col-header" style="border-radius:10px 10px 0 0;">
+    <span class="kanban-col-stripe" style="background:#e74c3c;"></span>
+    <span class="kanban-col-title">Rejected</span>
+    <span class="kanban-col-count" id="count-rejected">0</span>
+  </div>
+  <div id="rejected-cards" class="rejected-cards">
+    <div class="kanban-empty">Drop cards here</div>
+  </div>
 </div>
 
 <script>
@@ -224,7 +237,8 @@
     rejected:     { label: 'Rejected',     color: '#e74c3c' },
   };
 
-  const STATUSES = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
+  const MAIN_STATUSES     = ['saved', 'applied', 'interviewing', 'offer'];
+  const ALL_STATUSES      = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 
   function loadPipeline() {
     fetch('/api/pipeline')
@@ -237,10 +251,11 @@
   }
 
   function renderBoard() {
+    // ── Main columns ──────────────────────────────────────────────────────
     const board = document.getElementById('pipeline');
     board.innerHTML = '';
 
-    STATUSES.forEach(status => {
+    MAIN_STATUSES.forEach(status => {
       const jobs = pipelineData[status] || [];
       const meta = STATUS_META[status];
 
@@ -248,7 +263,6 @@
       col.className = 'kanban-col';
       col.dataset.status = status;
 
-      // Header
       col.innerHTML = `
         <div class="kanban-col-header">
           <span class="kanban-col-stripe" style="background:${meta.color};"></span>
@@ -256,35 +270,53 @@
           <span class="kanban-col-count" id="count-${status}">${jobs.length}</span>
         </div>`;
 
-      // Cards container
       const cardsEl = document.createElement('div');
       cardsEl.className = 'kanban-cards';
-
       if (jobs.length === 0) {
         cardsEl.innerHTML = '<div class="kanban-empty">Drop cards here</div>';
       } else {
         jobs.forEach(job => cardsEl.appendChild(buildCard(job, status)));
       }
 
-      // Drop events on the whole column
-      col.addEventListener('dragover', e => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        col.classList.add('drag-over');
-      });
-      col.addEventListener('dragleave', e => {
-        if (!col.contains(e.relatedTarget)) col.classList.remove('drag-over');
-      });
-      col.addEventListener('drop', e => {
-        e.preventDefault();
-        col.classList.remove('drag-over');
-        if (draggingJobId && col.dataset.status !== draggingStatus) {
-          updateJobStatus(draggingJobId, col.dataset.status);
-        }
-      });
-
+      wireDropZone(col, status);
       col.appendChild(cardsEl);
       board.appendChild(col);
+    });
+
+    // ── Rejected tray ─────────────────────────────────────────────────────
+    const rejectedJobs    = pipelineData['rejected'] || [];
+    const rejectedSection = document.getElementById('rejected-section');
+    const rejectedCards   = document.getElementById('rejected-cards');
+    const rejectedCount   = document.getElementById('count-rejected');
+
+    rejectedSection.style.display = '';
+    rejectedCount.textContent = rejectedJobs.length;
+    rejectedCards.innerHTML   = '';
+
+    if (rejectedJobs.length === 0) {
+      rejectedCards.innerHTML = '<div class="kanban-empty">Drop cards here</div>';
+    } else {
+      rejectedJobs.forEach(job => rejectedCards.appendChild(buildCard(job, 'rejected')));
+    }
+
+    wireDropZone(rejectedSection, 'rejected');
+  }
+
+  function wireDropZone(el, status) {
+    el.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      el.classList.add('drag-over');
+    });
+    el.addEventListener('dragleave', e => {
+      if (!el.contains(e.relatedTarget)) el.classList.remove('drag-over');
+    });
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('drag-over');
+      if (draggingJobId && status !== draggingStatus) {
+        updateJobStatus(draggingJobId, status);
+      }
     });
   }
 
@@ -296,7 +328,7 @@
 
     const saved = job.saved_date ? new Date(job.saved_date).toLocaleDateString() : '—';
 
-    const moveOpts = STATUSES
+    const moveOpts = ALL_STATUSES
       .filter(s => s !== status)
       .map(s => `<option value="${s}">${STATUS_META[s].label}</option>`)
       .join('');
@@ -322,7 +354,6 @@
       draggingJobId  = job.id;
       draggingStatus = status;
       e.dataTransfer.effectAllowed = 'move';
-      // slight delay so the card renders as "dragging" after the ghost is captured
       requestAnimationFrame(() => card.classList.add('dragging'));
     });
     card.addEventListener('dragend', () => {
@@ -357,7 +388,7 @@
 
   function exportPipelineCSV() {
     if (!pipelineData) { alert('No pipeline data loaded yet.'); return; }
-    const all = STATUSES.flatMap(s => (pipelineData[s] || []).map(j => ({...j, status: s})));
+    const all = ALL_STATUSES.flatMap(s => (pipelineData[s] || []).map(j => ({...j, status: s})));
     if (!all.length) { alert('Pipeline is empty.'); return; }
     const lines = [['Title','Company','Location','Salary','Status','Saved Date','Applied Date','Notes','URL'].join(',')];
     all.forEach(j => lines.push([
