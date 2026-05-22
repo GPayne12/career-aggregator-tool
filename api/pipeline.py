@@ -33,6 +33,15 @@ class PipelineUpdateRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class PipelineAddRequest(BaseModel):
+    title: str
+    company: str
+    url: str
+    status: str = "saved"
+    salary: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class PipelineResponse(BaseModel):
     saved: List[PipelineJobResponse]
     applied: List[PipelineJobResponse]
@@ -57,6 +66,36 @@ def get_pipeline_job_response(pipeline_job: PipelineJob, db: Session) -> Pipelin
         applied_date=pipeline_job.applied_date.isoformat() if pipeline_job.applied_date else None,
         notes=pipeline_job.notes,
     )
+
+
+@router.post("/add", status_code=201)
+def add_pipeline_job_manual(request: PipelineAddRequest, db: Session = Depends(get_db)):
+    """Manually add a job to the pipeline without a search result."""
+    valid_statuses = ["saved", "applied", "rejected", "interviewing", "offer"]
+    if request.status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status: {request.status}")
+
+    # Find or create the company record
+    company = db.query(Company).filter(Company.name == request.company).first()
+    if not company:
+        company = Company(name=request.company, career_url="")
+        db.add(company)
+        db.flush()
+
+    pipeline_job = PipelineJob(
+        job_id=None,
+        company_id=company.id,
+        title=request.title,
+        location=None,
+        salary_range=request.salary,
+        url=request.url,
+        status=request.status,
+        notes=request.notes,
+    )
+    db.add(pipeline_job)
+    db.commit()
+    db.refresh(pipeline_job)
+    return get_pipeline_job_response(pipeline_job, db)
 
 
 @router.post("/save", status_code=201)
