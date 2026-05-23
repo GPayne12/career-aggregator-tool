@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import List, Optional
+from datetime import datetime, timedelta
 from database import get_db, SessionLocal
-from models import Company
+from models import Company, Job, KeywordProfile
 from scraper import find_career_url
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
@@ -25,7 +26,6 @@ class CompanyUpdate(BaseModel):
     notes: Optional[str] = None
     score_a: Optional[int] = None
     score_m: Optional[int] = None
-    score_p: Optional[int] = None
 
 
 class CompanyResponse(BaseModel):
@@ -40,12 +40,39 @@ class CompanyResponse(BaseModel):
     score_p: Optional[int] = None
 
 
-def _to_response(c: Company) -> CompanyResponse:
+def _to_response(c: Company, score_p_override: Optional[int] = None) -> CompanyResponse:
     return CompanyResponse(
         id=c.id, name=c.name, career_url=c.career_url or "",
         notes=c.notes, is_active=c.is_active, is_skipped=bool(c.is_skipped),
-        score_a=c.score_a, score_m=c.score_m, score_p=c.score_p,
+        score_a=c.score_a, score_m=c.score_m,
+        score_p=score_p_override if score_p_override is not None else c.score_p,
     )
+
+
+def _compute_p_scores(db: Session) -> dict:
+    """Return {company_id: p_score} capped at 3.
+
+    A job counts if its title contains at least one keyword from any active profile,
+    matching the same OR logic used by the search page.
+    """
+    profiles = db.query(KeywordProfile).all()
+    keywords = list({kw.lower() for p in profiles for kw in p.get_keywords()})
+    if not keywords:
+        return {}
+
+    cutoff = datetime.utcnow() - timedelta(days=14)
+    active_jobs = db.query(Job.company_id, Job.title).filter(
+        Job.is_active == True,
+        Job.fetched_at >= cutoff,
+    ).all()
+
+    counts: dict = {}
+    for company_id, title in active_jobs:
+        title_lower = title.lower()
+        if any(kw in title_lower for kw in keywords):
+            counts[company_id] = counts.get(company_id, 0) + 1
+
+    return {cid: min(3, n) for cid, n in counts.items()}
 
 
 # ── Fixed-path routes first (must come before /{company_id}) ─────────────────
@@ -53,13 +80,15 @@ def _to_response(c: Company) -> CompanyResponse:
 @router.get("", response_model=List[CompanyResponse])
 def list_companies(db: Session = Depends(get_db)):
     companies = db.query(Company).filter(Company.is_active == True).all()
-    return [_to_response(c) for c in companies]
+    p_scores = _compute_p_scores(db)
+    return [_to_response(c, p_scores.get(c.id, 0)) for c in companies]
 
 
 @router.get("/all", response_model=List[CompanyResponse])
 def list_all_companies(db: Session = Depends(get_db)):
     companies = db.query(Company).all()
-    return [_to_response(c) for c in companies]
+    p_scores = _compute_p_scores(db)
+    return [_to_response(c, p_scores.get(c.id, 0)) for c in companies]
 
 
 @router.get("/discover-urls")
@@ -177,7 +206,7 @@ def update_company(company_id: int, company: CompanyUpdate, db: Session = Depend
                                 detail=f"Company '{company.name}' already exists")
         db_company.name = company.name
 
-    for field, val in [('score_a', company.score_a), ('score_m', company.score_m), ('score_p', company.score_p)]:
+    for field, val in [('score_a', company.score_a), ('score_m', company.score_m)]:
         if val is not None and not (0 <= val <= 3):
             raise HTTPException(status_code=400, detail=f"{field} must be between 0 and 3")
 
@@ -189,8 +218,6 @@ def update_company(company_id: int, company: CompanyUpdate, db: Session = Depend
         db_company.score_a = company.score_a
     if company.score_m is not None:
         db_company.score_m = company.score_m
-    if company.score_p is not None:
-        db_company.score_p = company.score_p
 
     db.commit()
     db.refresh(db_company)

@@ -133,7 +133,7 @@
                   <th class="sortable" onclick="sortBy('career_url')">Career Page <span class="sort-ind" data-col="career_url">${sortInd('career_url')}</span></th>
                   <th class="col-score sortable" onclick="sortBy('score_a')" title="Advocacy: internal connections at this company (0–3)">A <span class="sort-ind" data-col="score_a">${sortInd('score_a')}</span></th>
                   <th class="col-score sortable" onclick="sortBy('score_m')" title="Motivation: personal interest in this company (0–3)">M <span class="sort-ind" data-col="score_m">${sortInd('score_m')}</span></th>
-                  <th class="col-score sortable" onclick="sortBy('score_p')" title="Postings: relevant active job postings (0–3)">P <span class="sort-ind" data-col="score_p">${sortInd('score_p')}</span></th>
+                  <th class="col-score sortable" onclick="sortBy('score_p')" title="Postings: auto-computed from active keyword-matched listings (0–3)">P* <span class="sort-ind" data-col="score_p">${sortInd('score_p')}</span></th>
                   <th class="sortable" onclick="sortBy('is_skipped')">Status <span class="sort-ind" data-col="is_skipped">${sortInd('is_skipped')}</span></th>
                   <th>Actions</th>
                 </tr>
@@ -203,7 +203,7 @@
       <td><input type="url" id="edit-url-${id}" value="${escH(c.career_url||'')}" style="margin:0;width:100%;"></td>
       <td class="col-score"><input type="number" id="edit-a-${id}" value="${c.score_a ?? ''}" min="0" max="3" title="Advocacy: 0–3 internal connections"></td>
       <td class="col-score"><input type="number" id="edit-m-${id}" value="${c.score_m ?? ''}" min="0" max="3" title="Motivation: 0–3 personal interest"></td>
-      <td class="col-score"><input type="number" id="edit-p-${id}" value="${c.score_p ?? ''}" min="0" max="3" title="Postings: 0–3 relevant active listings"></td>
+      <td class="col-score" title="Auto-computed from active listings">${c.score_p ?? '<span class=\'text-muted\'>—</span>'}</td>
       <td></td>
       <td>
         <button class="icon-button" onclick="saveEdit(${id})">Save</button>
@@ -222,13 +222,11 @@
     const career_url = document.getElementById(`edit-url-${id}`).value.trim();
     const aRaw      = document.getElementById(`edit-a-${id}`).value.trim();
     const mRaw      = document.getElementById(`edit-m-${id}`).value.trim();
-    const pRaw      = document.getElementById(`edit-p-${id}`).value.trim();
     if (!name) return;
 
     const body = { name, career_url };
     if (aRaw !== '') body.score_a = parseInt(aRaw);
     if (mRaw !== '') body.score_m = parseInt(mRaw);
-    if (pRaw !== '') body.score_p = parseInt(pRaw);
 
     fetch(`/api/companies/${id}`, {
       method: 'PUT',
