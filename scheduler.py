@@ -12,7 +12,12 @@ logger = logging.getLogger(__name__)
 
 def _save_jobs(db: Session, scraper: JobScraper, company: Company, scraped_jobs: list) -> int:
     added = 0
+    cutoff = datetime.utcnow() - timedelta(days=7)
     for job_data in scraped_jobs:
+        posted_date = scraper.process_posted_date(job_data.get('posted_date'))
+        if posted_date and posted_date < cutoff:
+            continue
+
         existing = db.query(Job).filter(
             Job.company_id == company.id,
             Job.url == job_data['url']
@@ -29,7 +34,7 @@ def _save_jobs(db: Session, scraper: JobScraper, company: Company, scraped_jobs:
                 location_type=scraper.infer_location_type(location),
                 salary_range=job_data.get('salary'),
                 url=job_data['url'],
-                posted_date=scraper.process_posted_date(job_data.get('posted_date')),
+                posted_date=posted_date,
                 fetched_at=datetime.utcnow(),
                 is_active=True,
             ))
@@ -82,10 +87,10 @@ def iter_scrape() -> Generator[dict, None, None]:
                        "company": company.name, "found": 0,
                        "added": 0, "error": str(e)}
 
-        fourteen_days_ago = datetime.utcnow() - timedelta(days=14)
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
         pruned_jobs = db.query(Job).filter(
             Job.is_active == True,
-            Job.fetched_at < fourteen_days_ago,
+            Job.fetched_at < seven_days_ago,
         ).all()
         for job in pruned_jobs:
             job.is_active = False

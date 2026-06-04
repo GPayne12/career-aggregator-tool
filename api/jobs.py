@@ -68,7 +68,7 @@ def search_jobs(
     per_company_limit: Optional[int] = Query(None),
     db: Session = Depends(get_db),
 ):
-    fourteen_days_ago = datetime.utcnow() - timedelta(days=14)
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
     base_query = (
         db.query(Job, Company.name)
         .join(Company, Job.company_id == Company.id)
@@ -76,7 +76,10 @@ def search_jobs(
             and_(
                 Job.is_active == True,
                 Company.is_active == True,
-                Job.fetched_at >= fourteen_days_ago,
+                or_(
+                    Job.posted_date >= seven_days_ago,
+                    and_(Job.posted_date == None, Job.fetched_at >= seven_days_ago),
+                ),
             )
         )
     )
