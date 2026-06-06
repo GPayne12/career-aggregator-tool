@@ -758,6 +758,50 @@ a:hover {
   margin-top: 1.5rem;
 }
 
+/* Scrape timeout warning */
+.scrape-timeout-warning {
+  margin-top: 0.75rem;
+  background: #fef9e7;
+  border: 1px solid #f39c12;
+  border-radius: 6px;
+  padding: 0.65rem 1rem;
+  font-size: 0.88rem;
+  color: #7d6608;
+}
+
+.scrape-timeout-warning ul {
+  margin: 0.35rem 0 0 1.2rem;
+  padding: 0;
+}
+
+/* Exclude term chips */
+.exclude-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fdebd0;
+  color: #784212;
+  border: 1px solid #f5cba7;
+  border-radius: 12px;
+  padding: 3px 8px 3px 10px;
+  font-size: 0.82rem;
+}
+
+.exclude-remove {
+  background: none;
+  border: none;
+  color: #a04000;
+  cursor: pointer;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.exclude-remove:hover {
+  color: #e74c3c;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .stat-grid {

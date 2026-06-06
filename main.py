@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 import logging
 from contextlib import asynccontextmanager
 from database import init_db
-from api import companies, profiles, jobs, pipeline, scrape
+from api import companies, profiles, jobs, pipeline, scrape, settings
 
 # Set up logging
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -39,6 +39,7 @@ app.include_router(profiles.router)
 app.include_router(jobs.router)
 app.include_router(pipeline.router)
 app.include_router(scrape.router)
+app.include_router(settings.router)
 
 # Mount static files
 if os.path.exists("static"):

@@ -1,4 +1,5 @@
 import re
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
@@ -6,7 +7,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
 from database import get_db
-from models import Job, Company, KeywordProfile, PipelineJob
+from models import Job, Company, KeywordProfile, PipelineJob, Setting
 from synonyms import expand_keywords, SYNONYMS
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -80,6 +81,10 @@ def search_jobs(
     db: Session = Depends(get_db),
 ):
     seven_days_ago = datetime.utcnow() - timedelta(days=7)
+
+    _setting = db.query(Setting).filter(Setting.key == "exclude_terms").first()
+    exclude_terms = json.loads(_setting.value) if _setting else []
+
     base_query = (
         db.query(Job, Company.name)
         .join(Company, Job.company_id == Company.id)
@@ -94,6 +99,11 @@ def search_jobs(
             )
         )
     )
+
+    if exclude_terms:
+        base_query = base_query.filter(
+            and_(*[~Job.title.ilike(f"%{term}%") for term in exclude_terms])
+        )
 
     # Resolve selected profile IDs (multi-select takes precedence)
     selected_ids: List[int] = []

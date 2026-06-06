@@ -113,6 +113,13 @@ class Job(Base):
         }
 
 
+class Setting(Base):
+    __tablename__ = "settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=False)
+
+
 class PipelineJob(Base):
     __tablename__ = "pipeline_jobs"
 
