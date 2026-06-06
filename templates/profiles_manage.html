@@ -5,6 +5,18 @@
 {% block content %}
 <div class="page-title">Manage Keyword Profiles</div>
 
+<!-- Resume seed -->
+<div class="card">
+  <h3>Seed from Resume</h3>
+  <p class="text-muted" style="margin:0.5rem 0 1rem;">Upload a PDF résumé to extract role titles and skills as a starting keyword set.</p>
+  <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+    <input type="file" id="resume-file" accept=".pdf" style="width:auto;flex:1;min-width:200px;">
+    <button id="resume-btn" onclick="extractResume()" style="flex-shrink:0;">Extract Keywords</button>
+  </div>
+  <div id="resume-status" style="margin-top:0.75rem;font-size:0.9rem;"></div>
+</div>
+
+<!-- Create / edit profile -->
 <div class="card">
   <h3>Create New Profile</h3>
   <form id="add-profile-form" style="margin-top: 1rem;">
@@ -14,7 +26,7 @@
     </div>
     <div class="form-group">
       <label for="profile-keywords">Keywords (comma-separated)</label>
-      <textarea id="profile-keywords" name="keywords" placeholder="instructional designer, learning designer, learning" required></textarea>
+      <textarea id="profile-keywords" name="keywords" placeholder="instructional designer, learning designer, learning"></textarea>
     </div>
     <button type="submit">Create Profile</button>
   </form>
@@ -22,31 +34,182 @@
 
 <div id="profiles-list"></div>
 
+<!-- Resume review modal -->
+<div id="resume-modal" class="modal-backdrop" style="display:none;">
+  <div class="modal">
+    <h3>Review Extracted Keywords</h3>
+    <p class="text-muted" style="font-size:0.88rem;">Select the keywords to include, then save as a profile.</p>
+
+    <div class="form-group" style="margin-top:1rem;">
+      <label for="seed-profile-name">Profile Name</label>
+      <input type="text" id="seed-profile-name" placeholder="e.g., Learning Design" value="Resume Profile">
+    </div>
+
+    <div class="kw-review-grid" id="resume-review-grid"></div>
+
+    <div style="display:flex;gap:1rem;margin-top:0.25rem;">
+      <button class="secondary" style="font-size:0.85rem;padding:0.35rem 0.85rem;" onclick="selectAll(true)">Select All</button>
+      <button class="secondary" style="font-size:0.85rem;padding:0.35rem 0.85rem;" onclick="selectAll(false)">Deselect All</button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeModal()">Cancel</button>
+      <button onclick="saveFromResume()">Save as Profile</button>
+    </div>
+  </div>
+</div>
+
 <script>
+  // ── Resume seed ─────────────────────────────────────────────────────────────
+
+  function extractResume() {
+    const fileInput = document.getElementById('resume-file');
+    const status    = document.getElementById('resume-status');
+    if (!fileInput.files.length) { alert('Choose a PDF file first.'); return; }
+
+    const btn = document.getElementById('resume-btn');
+    btn.disabled = true;
+    btn.textContent = 'Extracting…';
+    status.textContent = '';
+
+    const form = new FormData();
+    form.append('file', fileInput.files[0]);
+
+    fetch('/api/profiles/seed-from-resume', { method: 'POST', body: form })
+      .then(r => {
+        if (!r.ok) return r.json().then(e => Promise.reject(e));
+        return r.json();
+      })
+      .then(data => {
+        btn.disabled = false;
+        btn.textContent = 'Extract Keywords';
+        openReviewModal(data);
+      })
+      .catch(e => {
+        btn.disabled = false;
+        btn.textContent = 'Extract Keywords';
+        status.innerHTML = `<span class="text-danger">${escH(e.detail || 'Extraction failed')}</span>`;
+      });
+  }
+
+  function openReviewModal(data) {
+    const grid = document.getElementById('resume-review-grid');
+    grid.innerHTML = '';
+
+    const groups = [
+      { key: 'role_titles', label: 'Role Titles', items: data.role_titles || [] },
+      { key: 'skills',      label: 'Skills',      items: data.skills      || [] },
+    ];
+
+    groups.forEach(g => {
+      if (!g.items.length) return;
+      const col = document.createElement('div');
+      col.className = 'kw-review-group';
+      col.innerHTML = `<h4>${g.label}</h4>`;
+      const list = document.createElement('div');
+      list.className = 'kw-checkbox-list';
+      g.items.forEach(item => {
+        const id = `kw-${Math.random().toString(36).slice(2)}`;
+        const lbl = document.createElement('label');
+        lbl.setAttribute('for', id);
+        lbl.innerHTML = `<input type="checkbox" id="${id}" value="${escH(item)}" checked> ${escH(item)}`;
+        list.appendChild(lbl);
+      });
+      col.appendChild(list);
+      grid.appendChild(col);
+    });
+
+    document.getElementById('resume-modal').style.display = 'flex';
+  }
+
+  function closeModal() {
+    document.getElementById('resume-modal').style.display = 'none';
+  }
+
+  function selectAll(checked) {
+    document.querySelectorAll('#resume-review-grid input[type="checkbox"]')
+      .forEach(cb => cb.checked = checked);
+  }
+
+  function saveFromResume() {
+    const name = document.getElementById('seed-profile-name').value.trim();
+    if (!name) { alert('Enter a profile name.'); return; }
+
+    const keywords = [...document.querySelectorAll('#resume-review-grid input[type="checkbox"]:checked')]
+      .map(cb => cb.value)
+      .filter(v => v);
+
+    if (!keywords.length) { alert('Select at least one keyword.'); return; }
+
+    fetch('/api/profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, keywords }),
+    })
+    .then(r => {
+      if (!r.ok) return r.json().then(e => Promise.reject(e));
+      return r.json();
+    })
+    .then(() => {
+      closeModal();
+      loadProfiles();
+    })
+    .catch(e => alert(`Error: ${e.detail || 'Unknown error'}`));
+  }
+
+  // Close modal on backdrop click
+  document.getElementById('resume-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  // ── Profile list ────────────────────────────────────────────────────────────
+
   function loadProfiles() {
     fetch('/api/profiles')
       .then(r => r.json())
       .then(profiles => {
         const list = document.getElementById('profiles-list');
-        if (profiles.length === 0) {
+        if (!profiles.length) {
           list.innerHTML = '<p class="text-muted">No profiles yet</p>';
           return;
         }
-
         list.innerHTML = '';
         profiles.forEach(profile => {
           const card = document.createElement('div');
           card.className = 'card';
           card.innerHTML = `
-            <h3>${profile.name}</h3>
-            <p><strong>Keywords:</strong> ${profile.keywords.join(', ')}</p>
-            <div>
-              <button onclick="editProfile(${profile.id}, '${profile.name}', '${profile.keywords.join(', ')}');">Edit</button>
-              <button class="danger" onclick="deleteProfile(${profile.id}, '${profile.name}');">Delete</button>
+            <h3>${escH(profile.name)}</h3>
+            <div id="kw-stats-${profile.id}" class="kw-stats-row" style="margin:0.6rem 0;">
+              <span class="text-muted" style="font-size:0.82rem;">Loading keyword stats…</span>
             </div>
-          `;
+            <div style="margin-top:0.75rem;">
+              <button onclick="editProfile(${profile.id}, '${escH(profile.name)}', '${escH(profile.keywords.join(', '))}')">Edit</button>
+              <button class="danger" onclick="deleteProfile(${profile.id}, '${escH(profile.name)}')">Delete</button>
+            </div>`;
           list.appendChild(card);
+          loadProfileStats(profile.id, profile.keywords);
         });
+      });
+  }
+
+  function loadProfileStats(profileId, keywords) {
+    fetch(`/api/profiles/${profileId}/stats`)
+      .then(r => r.json())
+      .then(stats => {
+        const container = document.getElementById(`kw-stats-${profileId}`);
+        if (!keywords.length) { container.innerHTML = ''; return; }
+        container.innerHTML = keywords.map(kw => {
+          const count = stats[kw] ?? 0;
+          return `<span class="kw-stat${count === 0 ? ' zero' : ''}" title="${count} active job${count !== 1 ? 's' : ''} match">
+            ${escH(kw)} <span class="kw-count">${count}</span>
+          </span>`;
+        }).join('');
+      })
+      .catch(() => {
+        const container = document.getElementById(`kw-stats-${profileId}`);
+        if (container) container.innerHTML = keywords.map(kw =>
+          `<span class="kw-stat">${escH(kw)}</span>`
+        ).join('');
       });
   }
 
@@ -60,53 +223,37 @@
 
   function deleteProfile(id, name) {
     if (!confirm(`Delete "${name}" profile?`)) return;
-
-    fetch(`/api/profiles/${id}`, {method: 'DELETE'})
-      .then(() => {
-        loadProfiles();
-      })
-      .catch(e => {
-        console.error('Error:', e);
-        alert('Error deleting profile');
-      });
+    fetch(`/api/profiles/${id}`, { method: 'DELETE' })
+      .then(() => loadProfiles())
+      .catch(e => { console.error(e); alert('Error deleting profile'); });
   }
 
   document.getElementById('add-profile-form').addEventListener('submit', function(e) {
     e.preventDefault();
-    const editId = this.dataset.editId;
+    const editId  = this.dataset.editId;
     const keywords = document.getElementById('profile-keywords').value
-      .split(',')
-      .map(k => k.trim())
-      .filter(k => k);
-
+      .split(',').map(k => k.trim()).filter(k => k);
     const data = {
-      name: document.getElementById('profile-name').value,
-      keywords: keywords
+      name:     document.getElementById('profile-name').value,
+      keywords: keywords,
     };
-
-    const url = editId ? `/api/profiles/${editId}` : '/api/profiles';
+    const url    = editId ? `/api/profiles/${editId}` : '/api/profiles';
     const method = editId ? 'PUT' : 'POST';
 
-    fetch(url, {
-      method: method,
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(data)
-    })
-    .then(r => {
-      if (!r.ok) return r.json().then(e => Promise.reject(e));
-      return r.json();
-    })
-    .then(() => {
-      this.reset();
-      delete this.dataset.editId;
-      document.querySelector('#add-profile-form button').textContent = 'Create Profile';
-      loadProfiles();
-    })
-    .catch(e => {
-      console.error('Error:', e);
-      alert(`Error: ${e.detail || 'Unknown error'}`);
-    });
+    fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      .then(r => { if (!r.ok) return r.json().then(e => Promise.reject(e)); return r.json(); })
+      .then(() => {
+        this.reset();
+        delete this.dataset.editId;
+        document.querySelector('#add-profile-form button').textContent = 'Create Profile';
+        loadProfiles();
+      })
+      .catch(e => alert(`Error: ${e.detail || 'Unknown error'}`));
   });
+
+  function escH(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
 
   document.addEventListener('DOMContentLoaded', loadProfiles);
 </script>

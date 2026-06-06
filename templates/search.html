@@ -382,8 +382,12 @@
     const saveLabel    = job.is_saved ? 'Saved' : 'Save';
     const saveDisabled = job.is_saved ? 'disabled' : '';
 
+    const badges = (showScore && job.matched_keywords.length)
+      ? `<div class="kw-badges">${job.matched_keywords.map(k => `<span class="kw-badge">${escH(k)}</span>`).join('')}</div>`
+      : '';
+
     tr.innerHTML = `
-      <td><a href="${escH(job.url)}" target="_blank" class="job-title-link">${escH(job.title)}</a></td>
+      <td><a href="${escH(job.url)}" target="_blank" class="job-title-link">${escH(job.title)}</a>${badges}</td>
       <td style="font-size:.9rem;">${escH(job.company)}</td>
       <td style="font-size:.85rem;color:#7f8c8d;">${escH(job.location || '—')}</td>
       <td style="font-size:.85rem;color:#7f8c8d;">${escH(job.salary || '—')}</td>

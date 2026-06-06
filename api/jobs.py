@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
@@ -6,6 +7,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from database import get_db
 from models import Job, Company, KeywordProfile, PipelineJob
+from synonyms import expand_keywords, SYNONYMS
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -31,31 +33,40 @@ class JobsListResponse(BaseModel):
     results: List[JobResponse]
 
 
-def _score(title: str, keywords: List[str]) -> tuple:
-    """Return (0-100 score, matched keywords) for a title against a keyword list.
+def _score(title: str, keywords: List[str], description: Optional[str] = None) -> tuple:
+    """Return (0-100 score, matched keywords) scored against title and description.
 
-    Each keyword gets 1 point for a substring match, boosted to 2 if the keyword
-    appears as a whole word (surrounded by word boundaries). Score is the weighted
-    sum expressed as a percentage of the maximum possible (2 pts × total keywords).
+    Title whole-word match: 2 pts. Title substring: 1 pt.
+    Description whole-word: 1 pt. Description substring: 0.5 pt.
+    Synonyms are checked alongside each keyword; the original keyword is reported.
+    Max score is anchored to title-only (2 × n keywords); score is capped at 100.
     """
     if not keywords:
         return 0, []
     title_lower = title.lower()
+    desc_lower = (description or '').lower()
     matched = []
-    weighted_score = 0
+    weighted_score = 0.0
     for kw in keywords:
         kw_lower = kw.lower()
-        if kw_lower not in title_lower:
-            continue
-        matched.append(kw)
-        # Whole-word match scores double
-        import re
-        if re.search(r'\b' + re.escape(kw_lower) + r'\b', title_lower):
-            weighted_score += 2
-        else:
-            weighted_score += 1
+        check_terms = [kw_lower] + SYNONYMS.get(kw_lower, [])
+        for term in check_terms:
+            in_title = term in title_lower
+            in_desc = term in desc_lower
+            if not in_title and not in_desc:
+                continue
+            matched.append(kw)
+            if re.search(r'\b' + re.escape(term) + r'\b', title_lower):
+                weighted_score += 2
+            elif in_title:
+                weighted_score += 1
+            elif re.search(r'\b' + re.escape(term) + r'\b', desc_lower):
+                weighted_score += 1
+            else:
+                weighted_score += 0.5
+            break  # don't double-count multiple synonyms for the same keyword
     max_score = len(keywords) * 2
-    pct = round(weighted_score / max_score * 100) if max_score else 0
+    pct = min(100, round(weighted_score / max_score * 100)) if max_score else 0
     return pct, matched
 
 
@@ -107,11 +118,14 @@ def search_jobs(
         elif profiles:
             profile_label = f"{len(profiles)} profiles"
 
-        # Filter: must match at least one keyword from any selected profile
+        # Filter: must match at least one keyword (+ synonyms) in title or description
         if all_keywords:
-            base_query = base_query.filter(
-                or_(*[Job.title.ilike(f"%{kw}%") for kw in all_keywords])
-            )
+            expanded = expand_keywords(all_keywords)
+            kw_conds = []
+            for kw in expanded:
+                kw_conds.append(Job.title.ilike(f"%{kw}%"))
+                kw_conds.append(Job.description.ilike(f"%{kw}%"))
+            base_query = base_query.filter(or_(*kw_conds))
 
     if location_type:
         base_query = base_query.filter(Job.location_type == location_type)
@@ -138,7 +152,7 @@ def search_jobs(
     results = []
     for job, company_name in rows:
         days_old = (datetime.utcnow() - job.posted_date).days if job.posted_date else 0
-        score, matched = _score(job.title, all_keywords)
+        score, matched = _score(job.title, all_keywords, job.description)
         results.append(JobResponse(
             job_id=job.id,
             company=company_name,

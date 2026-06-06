@@ -127,6 +127,12 @@ class JobScraper:
         self._browser = None
         self._playwright = None
 
+    @staticmethod
+    def _strip_html(html: str) -> str:
+        if not html:
+            return ''
+        return BeautifulSoup(html, 'html.parser').get_text(separator=' ', strip=True)
+
     def detect_platform(self, url: str) -> str:
         if any(x in url for x in ['myworkdayjobs.com', 'workday.com/wday']):
             return 'workday'
@@ -257,10 +263,12 @@ class JobScraper:
                 job_url = job.get('absolute_url', '')
                 location = (job.get('location') or {}).get('name', '')
                 updated_at = job.get('updated_at', '')
+                description = self._strip_html(job.get('content', ''))
                 if title and job_url:
                     jobs.append({'title': title, 'location': location,
                                  'salary': None, 'url': job_url,
-                                 'posted_date': updated_at})
+                                 'posted_date': updated_at,
+                                 'description': description})
 
             logger.info(f"Greenhouse: {len(jobs)} jobs from {url}")
             return jobs
@@ -300,10 +308,12 @@ class JobScraper:
                 created_ms = p.get('createdAt')
                 posted = (datetime.utcfromtimestamp(created_ms / 1000).isoformat()
                           if created_ms else None)
+                description = p.get('descriptionPlain', '') or self._strip_html(p.get('description', ''))
                 if title and job_url:
                     jobs.append({'title': title, 'location': location,
                                  'salary': None, 'url': job_url,
-                                 'posted_date': posted})
+                                 'posted_date': posted,
+                                 'description': description})
 
             logger.info(f"Lever: {len(jobs)} jobs from {url}")
             return jobs

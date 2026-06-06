@@ -77,6 +77,7 @@ class Job(Base):
     location_type = Column(String(50), nullable=True)  # remote, on_site, hybrid
     salary_range = Column(String(255), nullable=True)
     url = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
     posted_date = Column(DateTime, nullable=True)
     fetched_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)

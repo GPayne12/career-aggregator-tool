@@ -25,6 +25,8 @@ def _save_jobs(db: Session, scraper: JobScraper, company: Company, scraped_jobs:
         if existing:
             existing.fetched_at = datetime.utcnow()
             existing.is_active = True
+            if job_data.get('description') and not existing.description:
+                existing.description = job_data['description']
         else:
             location = job_data.get('location')
             db.add(Job(
@@ -34,6 +36,7 @@ def _save_jobs(db: Session, scraper: JobScraper, company: Company, scraped_jobs:
                 location_type=scraper.infer_location_type(location),
                 salary_range=job_data.get('salary'),
                 url=job_data['url'],
+                description=job_data.get('description'),
                 posted_date=posted_date,
                 fetched_at=datetime.utcnow(),
                 is_active=True,

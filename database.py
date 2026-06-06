@@ -22,6 +22,7 @@ def init_db():
             "ALTER TABLE companies ADD COLUMN score_a INTEGER",
             "ALTER TABLE companies ADD COLUMN score_m INTEGER",
             "ALTER TABLE companies ADD COLUMN score_p INTEGER",
+            "ALTER TABLE jobs ADD COLUMN description TEXT",
         ]:
             try:
                 conn.execute(text(stmt))
