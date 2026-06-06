@@ -1,6 +1,5 @@
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timedelta
 from typing import Generator
 from sqlalchemy.orm import Session
@@ -10,7 +9,9 @@ from scraper import JobScraper
 
 logger = logging.getLogger(__name__)
 
-SCRAPE_TIMEOUT = 60
+# Playwright raises TimeoutError on page load timeout; requests raises
+# requests.exceptions.Timeout. Both indicate a company page that needs investigation.
+_TIMEOUT_PHRASES = ("timeout", "timed out", "time out")
 
 
 def _get_exclude_terms(db: Session) -> list:
@@ -75,7 +76,6 @@ def iter_scrape() -> Generator[dict, None, None]:
     """
     db: Session = SessionLocal()
     scraper = JobScraper()
-    executor = ThreadPoolExecutor(max_workers=1)
 
     try:
         exclude_terms = _get_exclude_terms(db)
@@ -99,8 +99,7 @@ def iter_scrape() -> Generator[dict, None, None]:
                 continue
 
             try:
-                future = executor.submit(scraper.scrape_career_page, company.career_url)
-                scraped_jobs = future.result(timeout=SCRAPE_TIMEOUT)
+                scraped_jobs = scraper.scrape_career_page(company.career_url)
                 added = _save_jobs(db, scraper, company, scraped_jobs, exclude_terms)
                 db.commit()
                 total_added += added
@@ -109,22 +108,20 @@ def iter_scrape() -> Generator[dict, None, None]:
                        "company": company.name, "found": len(scraped_jobs),
                        "added": added, "timed_out": False, "error": None}
 
-            except FuturesTimeoutError:
-                timed_out_count += 1
-                errors += 1
-                logger.warning(f"Timed out scraping {company.name} after {SCRAPE_TIMEOUT}s")
-                scraper.close()  # reset browser so next company gets a clean context
-                yield {"type": "progress", "index": i, "total": total,
-                       "company": company.name, "found": 0, "added": 0,
-                       "timed_out": True, "error": f"Timed out after {SCRAPE_TIMEOUT}s"}
-
             except Exception as e:
-                logger.error(f"Error scraping {company.name}: {e}")
+                err_str = str(e)
+                is_timeout = any(p in err_str.lower() for p in _TIMEOUT_PHRASES)
+                if is_timeout:
+                    timed_out_count += 1
+                    logger.warning(f"Timeout scraping {company.name}: {err_str[:120]}")
+                    scraper.close()  # reset browser so the next company gets a clean context
+                else:
+                    logger.error(f"Error scraping {company.name}: {err_str}")
                 errors += 1
                 db.rollback()
                 yield {"type": "progress", "index": i, "total": total,
                        "company": company.name, "found": 0, "added": 0,
-                       "timed_out": False, "error": str(e)}
+                       "timed_out": is_timeout, "error": err_str}
 
         seven_days_ago = datetime.utcnow() - timedelta(days=7)
         pruned_jobs = db.query(Job).filter(
@@ -143,7 +140,6 @@ def iter_scrape() -> Generator[dict, None, None]:
         db.rollback()
         yield {"type": "error", "message": str(e)}
     finally:
-        executor.shutdown(wait=False)
         scraper.close()
         db.close()
 
