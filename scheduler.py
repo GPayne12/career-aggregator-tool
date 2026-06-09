@@ -1,17 +1,25 @@
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Generator
+from typing import Generator, List
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import Company, Job, Setting
+from models import Company, Job, KeywordProfile, Setting
 from scraper import JobScraper
+from synonyms import expand_keywords
 
 logger = logging.getLogger(__name__)
 
 # Playwright raises TimeoutError on page load timeout; requests raises
 # requests.exceptions.Timeout. Both indicate a company page that needs investigation.
 _TIMEOUT_PHRASES = ("timeout", "timed out", "time out")
+
+PER_COMPANY_CAP = 25
+
+
+def _matches_keywords(title: str, keywords_lower: List[str]) -> bool:
+    t = title.lower()
+    return any(kw in t for kw in keywords_lower)
 
 
 def _get_exclude_terms(db: Session) -> list:
@@ -23,21 +31,45 @@ def _get_exclude_terms(db: Session) -> list:
 
 
 def _save_jobs(db: Session, scraper: JobScraper, company: Company,
-               scraped_jobs: list, exclude_terms: list) -> int:
-    added = 0
+               scraped_jobs: list, exclude_terms: list,
+               keywords_lower: List[str]) -> int:
     cutoff = datetime.utcnow() - timedelta(days=7)
     exclude_lower = [t.lower() for t in exclude_terms]
 
+    # Step 1: exclude terms + date filter, parse posted_date once
+    candidates: List[tuple] = []
     for job_data in scraped_jobs:
         title_lower = job_data.get('title', '').lower()
-
         if exclude_lower and any(t in title_lower for t in exclude_lower):
             continue
-
         posted_date = scraper.process_posted_date(job_data.get('posted_date'))
         if posted_date and posted_date < cutoff:
             continue
+        candidates.append((job_data, posted_date))
 
+    # Step 2: deduplicate by normalised title within this batch
+    seen_titles: set = set()
+    deduped: List[tuple] = []
+    for job_data, posted_date in candidates:
+        norm = job_data.get('title', '').lower().strip()
+        if norm not in seen_titles:
+            seen_titles.add(norm)
+            deduped.append((job_data, posted_date))
+
+    # Step 3: cap at PER_COMPANY_CAP, keyword-matched jobs fill slots first
+    if len(deduped) > PER_COMPANY_CAP:
+        if keywords_lower:
+            matched   = [(j, d) for j, d in deduped if     _matches_keywords(j.get('title', ''), keywords_lower)]
+            unmatched = [(j, d) for j, d in deduped if not _matches_keywords(j.get('title', ''), keywords_lower)]
+        else:
+            matched, unmatched = [], deduped
+        limited = (matched + unmatched)[:PER_COMPANY_CAP]
+    else:
+        limited = deduped
+
+    # Step 4: upsert
+    added = 0
+    for job_data, posted_date in limited:
         existing = db.query(Job).filter(
             Job.company_id == company.id,
             Job.url == job_data['url']
@@ -80,6 +112,9 @@ def iter_scrape() -> Generator[dict, None, None]:
     try:
         exclude_terms = _get_exclude_terms(db)
 
+        raw_keywords = [kw for p in db.query(KeywordProfile).all() for kw in p.get_keywords()]
+        keywords_lower = [kw.lower() for kw in expand_keywords(raw_keywords)] if raw_keywords else []
+
         companies = db.query(Company).filter(
             Company.is_active == True,
             Company.is_skipped == False,
@@ -100,7 +135,7 @@ def iter_scrape() -> Generator[dict, None, None]:
 
             try:
                 scraped_jobs = scraper.scrape_career_page(company.career_url)
-                added = _save_jobs(db, scraper, company, scraped_jobs, exclude_terms)
+                added = _save_jobs(db, scraper, company, scraped_jobs, exclude_terms, keywords_lower)
                 db.commit()
                 total_added += added
                 logger.info(f"Scraped {company.name}: {len(scraped_jobs)} found, {added} new")
