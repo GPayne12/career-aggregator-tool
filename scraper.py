@@ -444,11 +444,11 @@ class JobScraper:
             browser = self._get_browser()
             page = browser.new_page()
             page.set_extra_http_headers({'User-Agent': HEADERS['User-Agent']})
-            page.goto(url, wait_until='load', timeout=60000)
+            page.goto(url, wait_until='domcontentloaded', timeout=60000)
             return page.content()
         except PlaywrightTimeoutError:
-            logger.warning(f"Page load timeout for {url} — returning partial content")
-            return page.content() if page else None
+            logger.warning(f"Page load timeout for {url}")
+            return None
         except Exception as e:
             logger.error(f"Failed to fetch {url}: {e}")
             return None
