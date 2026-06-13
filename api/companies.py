@@ -1,16 +1,21 @@
 import csv
 import io
 import json
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
+import requests as http_requests
 from database import get_db, SessionLocal
 from models import Company, Job, KeywordProfile
 from scraper import find_career_url
+
+_CHECK_TIMEOUT = 6   # seconds per URL
+_CHECK_WORKERS = 8   # concurrent checks
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 
@@ -153,6 +158,48 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
 
     db.commit()
     return {"added": added, "skipped": skipped, "errors": errors}
+
+
+# ── URL health check ─────────────────────────────────────────────────────────
+
+def _check_one(company_id: int, url: str) -> dict:
+    """HEAD then GET fallback; returns {id, ok, status_code}."""
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; CareerAggregator/1.0)"}
+    try:
+        r = http_requests.head(url, timeout=_CHECK_TIMEOUT, allow_redirects=True,
+                               headers=headers)
+        # Some servers reject HEAD; fall back to GET with stream to avoid downloading body
+        if r.status_code in (405, 403, 400):
+            r = http_requests.get(url, timeout=_CHECK_TIMEOUT, allow_redirects=True,
+                                  headers=headers, stream=True)
+            r.close()
+        ok = r.status_code < 400
+        return {"id": company_id, "ok": ok, "status_code": r.status_code}
+    except Exception as exc:
+        return {"id": company_id, "ok": False, "status_code": None, "error": str(exc)[:120]}
+
+
+@router.get("/url-check")
+def url_check(ids: str = Query(..., description="Comma-separated company IDs"),
+              db: Session = Depends(get_db)):
+    """Check whether each company's career URL is reachable. Returns a list of results."""
+    try:
+        id_list = [int(i) for i in ids.split(",") if i.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ids must be comma-separated integers")
+
+    companies = db.query(Company).filter(Company.id.in_(id_list)).all()
+    to_check = [(c.id, c.career_url) for c in companies if c.career_url]
+    no_url   = [c.id for c in companies if not c.career_url]
+
+    results = [{"id": cid, "ok": None, "status_code": None} for cid in no_url]
+
+    with ThreadPoolExecutor(max_workers=_CHECK_WORKERS) as pool:
+        futures = {pool.submit(_check_one, cid, url): cid for cid, url in to_check}
+        for future in as_completed(futures):
+            results.append(future.result())
+
+    return results
 
 
 # ── Param routes after all fixed paths ───────────────────────────────────────

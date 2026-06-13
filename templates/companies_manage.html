@@ -43,6 +43,12 @@
   th.col-score { width:38px; text-align:center; }
   td.col-score { text-align:center; font-size:0.82rem; color:#555; }
   td.col-score input { width:36px; text-align:center; padding:0.2rem; margin:0; font-size:0.82rem; }
+  .url-dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+             margin-right:5px; vertical-align:middle; flex-shrink:0; }
+  .url-dot.checking { background:#ccc; }
+  .url-dot.ok       { background:#27ae60; }
+  .url-dot.error    { background:#e74c3c; }
+  .url-dot.none     { background:#ddd; opacity:0.5; }
 </style>
 
 <script>
@@ -143,6 +149,36 @@
           </div>`;
 
         renderTable();
+        runUrlChecks(companies.filter(c => c.career_url).map(c => c.id));
+      });
+  }
+
+  function runUrlChecks(ids) {
+    if (!ids.length) return;
+    fetch(`/api/companies/url-check?ids=${ids.join(',')}`)
+      .then(r => r.json())
+      .then(results => {
+        results.forEach(r => {
+          const dot = document.getElementById(`dot-${r.id}`);
+          if (!dot) return;
+          dot.classList.remove('checking');
+          if (r.ok === null) {
+            dot.classList.add('none');
+            dot.title = 'No URL set';
+          } else if (r.ok) {
+            dot.classList.add('ok');
+            dot.title = `OK (HTTP ${r.status_code})`;
+          } else {
+            dot.classList.add('error');
+            dot.title = r.error ? `Error: ${r.error}` : `HTTP ${r.status_code ?? 'unreachable'}`;
+          }
+        });
+      })
+      .catch(() => {
+        ids.forEach(id => {
+          const dot = document.getElementById(`dot-${id}`);
+          if (dot) { dot.classList.remove('checking'); dot.classList.add('error'); dot.title = 'Check failed'; }
+        });
       });
   }
 
@@ -151,9 +187,12 @@
     tr.id = `row-${company.id}`;
     if (company.is_skipped) tr.style.opacity = '0.55';
 
+    const dot = company.career_url
+      ? `<span class="url-dot checking" id="dot-${company.id}" title="Checking…"></span>`
+      : `<span class="url-dot none" title="No URL set"></span>`;
     const urlCell = company.career_url
-      ? `<a href="${escH(company.career_url)}" target="_blank" style="font-size:0.85rem;">Link ↗</a>`
-      : `<span class="text-muted">—</span>`;
+      ? `<span style="display:inline-flex;align-items:center;">${dot}<a href="${escH(company.career_url)}" target="_blank" style="font-size:0.85rem;">Link ↗</a></span>`
+      : `<span style="display:inline-flex;align-items:center;">${dot}<span class="text-muted">—</span></span>`;
 
     const skipBadge = company.is_skipped
       ? `<span style="font-size:0.72rem;background:#f39c12;color:white;padding:0.1rem 0.45rem;border-radius:10px;font-weight:600;">Skipped</span>`
