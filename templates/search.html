@@ -50,6 +50,7 @@
         <div class="pill-group" id="region-pills">
           <button class="pill active" data-value="">All</button>
           <button class="pill" data-value="us">Inside US</button>
+          <button class="pill" data-value="near_philly">Near Philadelphia (160mi)</button>
           <button class="pill" data-value="outside">Outside US</button>
         </div>
       </div>
@@ -66,18 +67,10 @@
         </div>
       </div>
     </div>
-    <!-- Min salary + text search -->
-    <div class="filter-row" style="flex-wrap:wrap; gap:1rem;">
-      <div style="display:flex; flex-direction:column; gap:0.35rem;">
-        <span class="filter-label">Min Salary ($)</span>
-        <input type="number" id="salary-min" placeholder="e.g. 80000"
-               style="margin:0; padding:0.35rem 0.5rem; width:140px; height:34px; font-size:0.85rem;"
-               min="0" step="10000">
-      </div>
-      <div style="display:flex; flex-direction:column; gap:0.35rem; flex:1; min-width:200px;">
-        <span class="filter-label">Search</span>
-        <input type="text" id="jobs-search" placeholder="Filter by title or company…" style="margin:0;">
-      </div>
+    <!-- Text search -->
+    <div class="filter-row">
+      <span class="filter-label">Search</span>
+      <input type="text" id="jobs-search" placeholder="Filter by title or company…" style="margin:0;flex:1;">
     </div>
   </div>
 
@@ -242,14 +235,6 @@
     });
   });
 
-  // ── Salary filter (client-side) ───────────────────────────────────────────
-
-  let salaryTimer;
-  document.getElementById('salary-min').addEventListener('input', () => {
-    clearTimeout(salaryTimer);
-    salaryTimer = setTimeout(renderJobTable, 300);
-  });
-
   // ── Text search (client-side) ─────────────────────────────────────────────
 
   let searchTimer;
@@ -257,6 +242,26 @@
     clearTimeout(searchTimer);
     searchTimer = setTimeout(renderJobTable, 150);
   });
+
+  // ── Philadelphia-region detection ────────────────────────────────────────
+
+  // States fully within 160 miles of Philadelphia
+  const NEAR_PHILLY_STATES = [', pa', ', nj', ', de', ', md', ', dc'];
+  // Cities in partial-overlap states (NY, VA, CT) that fall within range
+  const NEAR_PHILLY_CITIES = [
+    'new york', 'nyc', 'brooklyn', 'manhattan', 'bronx', 'queens', 'long island',
+    'stamford, ct', 'bridgeport, ct', 'new haven, ct',
+    'richmond, va', 'mclean', 'arlington, va', 'alexandria, va',
+    'reston, va', 'herndon, va', 'fairfax, va', 'falls church', 'tysons',
+  ];
+
+  function isNearPhiladelphia(location) {
+    if (!location || location === '—') return true;
+    const loc = location.toLowerCase();
+    if (NEAR_PHILLY_STATES.some(s => loc.includes(s))) return true;
+    if (NEAR_PHILLY_CITIES.some(c => loc.includes(c))) return true;
+    return false;
+  }
 
   // ── US location detection ─────────────────────────────────────────────────
 
@@ -293,19 +298,6 @@
     return !NON_US_KEYWORDS.some(kw => loc.includes(kw));
   }
 
-  // ── Salary parsing ────────────────────────────────────────────────────────
-
-  function parseSalaryValue(str) {
-    if (!str) return null;
-    const clean = str.replace(/[,\s$€£]/g, '');
-    const m = clean.match(/(\d+(?:\.\d+)?)(k)?/i);
-    if (!m) return null;
-    let val = parseFloat(m[1]);
-    if (m[2]) val *= 1000;
-    if (/\/\s*(hr|hour)/i.test(str)) val *= 2080;
-    return val;
-  }
-
   // ── Sort ──────────────────────────────────────────────────────────────────
 
   function sortBy(col) {
@@ -327,7 +319,7 @@
       case 'company':  return (job.company  || '').toLowerCase();
       case 'location': return (job.location || '').toLowerCase();
       case 'posted':   return job.days_old  ?? 9999;
-      case 'salary':   return parseSalaryValue(job.salary) ?? -1;
+
       case 'score':    return job.relevance_score ?? 0;
       default:         return '';
     }
@@ -366,20 +358,15 @@
     if (jobsLoadState !== 'loaded') return;
 
     const list      = document.getElementById('jobs-list');
-    const textQ     = document.getElementById('jobs-search').value.toLowerCase().trim();
-    const minSalIn  = document.getElementById('salary-min').value;
-    const minSalary = minSalIn ? parseFloat(minSalIn) : null;
+    const textQ = document.getElementById('jobs-search').value.toLowerCase().trim();
 
     // Filter
     const filtered = currentJobData.filter(job => {
       if (textQ && !job.title.toLowerCase().includes(textQ) && !job.company.toLowerCase().includes(textQ))
         return false;
-      if (selectedRegion === 'us'      && !isUSLocation(job.location)) return false;
-      if (selectedRegion === 'outside' &&  isUSLocation(job.location)) return false;
-      if (minSalary !== null) {
-        const sal = parseSalaryValue(job.salary);
-        if (sal !== null && sal < minSalary) return false;
-      }
+      if (selectedRegion === 'us'         && !isUSLocation(job.location))       return false;
+      if (selectedRegion === 'outside'    &&  isUSLocation(job.location))       return false;
+      if (selectedRegion === 'near_philly' && !isNearPhiladelphia(job.location)) return false;
       return true;
     });
 
@@ -407,8 +394,7 @@
       <thead><tr>
         <th style="cursor:pointer;" onclick="sortBy('title')">Title${sortIndicator('title')}</th>
         <th style="width:140px;cursor:pointer;" onclick="sortBy('company')">Company${sortIndicator('company')}</th>
-        <th style="width:160px;cursor:pointer;" onclick="sortBy('location')">Location${sortIndicator('location')}</th>
-        <th style="width:120px;cursor:pointer;" onclick="sortBy('salary')">Salary${sortIndicator('salary')}</th>
+        <th style="width:180px;cursor:pointer;" onclick="sortBy('location')">Location${sortIndicator('location')}</th>
         <th style="width:75px;cursor:pointer;" onclick="sortBy('posted')">Posted${sortIndicator('posted')}</th>
         ${scoreHeader}
         <th style="width:70px;"></th>
@@ -454,7 +440,6 @@
       <td><a href="${escH(job.url)}" target="_blank" class="job-title-link">${escH(job.title)}</a>${badges}</td>
       <td style="font-size:.9rem;">${escH(job.company)}</td>
       <td style="font-size:.85rem;color:#7f8c8d;">${escH(job.location || '—')}</td>
-      <td style="font-size:.85rem;color:#7f8c8d;">${escH(job.salary || '—')}</td>
       <td style="font-size:.85rem;color:#7f8c8d;white-space:nowrap;">${age}</td>
       ${scoreCell}
       <td><button class="icon-button" ${saveDisabled} onclick="saveJob(${job.job_id},this)">${saveLabel}</button></td>`;
@@ -487,26 +472,21 @@
   // ── Export CSV ────────────────────────────────────────────────────────────
 
   function exportCSV() {
-    const textQ     = document.getElementById('jobs-search').value.toLowerCase().trim();
-    const minSalIn  = document.getElementById('salary-min').value;
-    const minSalary = minSalIn ? parseFloat(minSalIn) : null;
+    const textQ = document.getElementById('jobs-search').value.toLowerCase().trim();
 
     const rows = currentJobData.filter(job => {
       if (textQ && !job.title.toLowerCase().includes(textQ) && !job.company.toLowerCase().includes(textQ)) return false;
-      if (selectedRegion === 'us'      && !isUSLocation(job.location)) return false;
-      if (selectedRegion === 'outside' &&  isUSLocation(job.location)) return false;
-      if (minSalary !== null) {
-        const sal = parseSalaryValue(job.salary);
-        if (sal !== null && sal < minSalary) return false;
-      }
+      if (selectedRegion === 'us'          && !isUSLocation(job.location))       return false;
+      if (selectedRegion === 'outside'     &&  isUSLocation(job.location))       return false;
+      if (selectedRegion === 'near_philly' && !isNearPhiladelphia(job.location)) return false;
       return true;
     });
 
     if (!rows.length) { alert('No jobs to export.'); return; }
 
-    const lines = [['Title','Company','Location','Salary','Posted Date','Relevance %','URL'].join(',')];
+    const lines = [['Title','Company','Location','Posted Date','Relevance %','URL'].join(',')];
     rows.forEach(j => lines.push([
-      csvCell(j.title), csvCell(j.company), csvCell(j.location), csvCell(j.salary),
+      csvCell(j.title), csvCell(j.company), csvCell(j.location),
       csvCell(j.posted_date ? new Date(j.posted_date).toLocaleDateString() : ''),
       j.relevance_score,
       csvCell(j.url),

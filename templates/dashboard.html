@@ -187,6 +187,7 @@
       el.innerHTML = '<p class="text-muted">No companies yet. <a href="/companies/manage">Add one</a>.</p>';
       return;
     }
+    companies.sort((a, b) => a.name.localeCompare(b.name));
     companies.forEach(c => { companiesData[c.id] = c; });
     const chips = companies.map(c =>
       `<button class="company-chip${c.is_skipped ? ' skipped' : ''}" onclick="openCompanyEdit(${c.id})" title="Click to edit">${escH(c.name)}</button>`
