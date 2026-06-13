@@ -333,6 +333,7 @@
       params.set('profile_ids', [...selectedProfileIds].join(','));
     if (selectedLocationType)
       params.set('location_type', selectedLocationType);
+    params.set('per_company_limit', '25');
 
     const list = document.getElementById('jobs-list');
     list.innerHTML = '<p class="text-muted">Loading…</p>';
