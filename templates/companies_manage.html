@@ -167,10 +167,10 @@
             dot.title = 'No URL set';
           } else if (r.ok) {
             dot.classList.add('ok');
-            dot.title = `OK (HTTP ${r.status_code})`;
+            dot.title = r.status_code === 403 ? 'Reachable (bot-blocked, URL is valid)' : `OK (HTTP ${r.status_code})`;
           } else {
             dot.classList.add('error');
-            dot.title = r.error ? `Error: ${r.error}` : `HTTP ${r.status_code ?? 'unreachable'}`;
+            dot.title = r.error ? `Unreachable: ${r.error}` : `Not found (HTTP ${r.status_code ?? 'no response'})`;
           }
         });
       })

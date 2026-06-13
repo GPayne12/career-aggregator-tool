@@ -163,17 +163,22 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
 # ── URL health check ─────────────────────────────────────────────────────────
 
 def _check_one(company_id: int, url: str) -> dict:
-    """HEAD then GET fallback; returns {id, ok, status_code}."""
+    """HEAD then GET fallback; returns {id, ok, status_code}.
+
+    Green (ok=True):  any HTTP response except 404/410 — a 403 means the
+                      server exists and blocked a bot; the URL is still valid.
+    Red  (ok=False):  404, 410 (page genuinely gone), or no response at all.
+    """
     headers = {"User-Agent": "Mozilla/5.0 (compatible; CareerAggregator/1.0)"}
     try:
         r = http_requests.head(url, timeout=_CHECK_TIMEOUT, allow_redirects=True,
                                headers=headers)
-        # Some servers reject HEAD; fall back to GET with stream to avoid downloading body
-        if r.status_code in (405, 403, 400):
+        # Some servers reject HEAD — fall back to streaming GET
+        if r.status_code in (405, 400):
             r = http_requests.get(url, timeout=_CHECK_TIMEOUT, allow_redirects=True,
                                   headers=headers, stream=True)
             r.close()
-        ok = r.status_code < 400
+        ok = r.status_code not in (404, 410)
         return {"id": company_id, "ok": ok, "status_code": r.status_code}
     except Exception as exc:
         return {"id": company_id, "ok": False, "status_code": None, "error": str(exc)[:120]}
