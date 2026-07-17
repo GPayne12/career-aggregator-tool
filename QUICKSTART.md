@@ -163,7 +163,6 @@ cp career_aggregator.db career_aggregator.db.backup
 ## Need More Help?
 
 - See [README.md](README.md) for architecture details
-- Check plan at: `(local dev plan file)`
 - Review application logs in terminal output
 
 ---
