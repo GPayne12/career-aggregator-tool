@@ -26,12 +26,12 @@ You should see:
 ```
 INFO:     Started server process [pid]
 INFO:     Application startup complete
-INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Uvicorn running on http://0.0.0.0:8003
 INFO:     Starting scheduler...
 ```
 
 ### Step 4: Open in browser
-Visit **http://localhost:8000**
+Visit **http://localhost:8003**
 
 ## First-Time Workflow
 

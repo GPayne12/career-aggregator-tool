@@ -63,7 +63,7 @@ def setup():
 
     print("\n✅ Setup complete!")
     print("\nYou can now run: python main.py")
-    print("Then visit: http://localhost:8000")
+    print("Then visit: http://localhost:8003")
 
 if __name__ == "__main__":
     setup()
