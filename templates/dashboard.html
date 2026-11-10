@@ -98,7 +98,7 @@
     interviewing: '#f39c12',
     offer: '#27ae60',
     rejected: '#e74c3c',
-  };
+    preparing: '#b5642a', ready: '#0d7d7d' };
 
   function loadStats() {
     Promise.all([
@@ -123,7 +123,7 @@
   }
 
   function renderPipelineSummary(data) {
-    const statuses = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
+    const statuses = ['saved', 'preparing', 'ready', 'applied', 'interviewing', 'offer', 'rejected'];
     const el = document.getElementById('pipeline-summary');
 
     const hasAny = statuses.some(s => data[s].length > 0);

@@ -300,6 +300,8 @@
         <label>Status</label>
         <select id="aj-status">
           <option value="saved">Saved</option>
+          <option value="preparing">Preparing</option>
+          <option value="ready">Ready</option>
           <option value="applied">Applied</option>
           <option value="interviewing">Interviewing</option>
           <option value="offer">Offer</option>
@@ -338,14 +340,16 @@
 
   const STATUS_META = {
     saved:        { label: 'Saved',        color: '#3498db' },
+    preparing:    { label: 'Preparing',    color: '#b5642a' },
+    ready:        { label: 'Ready',        color: '#0d7d7d' },
     applied:      { label: 'Applied',      color: '#27ae60' },
     interviewing: { label: 'Interviewing', color: '#f39c12' },
     offer:        { label: 'Offer',        color: '#8e44ad' },
     rejected:     { label: 'Rejected',     color: '#e74c3c' },
   };
 
-  const MAIN_STATUSES = ['saved', 'applied', 'interviewing', 'offer'];
-  const ALL_STATUSES  = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
+  const MAIN_STATUSES = ['saved', 'preparing', 'ready', 'applied', 'interviewing', 'offer'];
+  const ALL_STATUSES  = ['saved', 'preparing', 'ready', 'applied', 'interviewing', 'offer', 'rejected'];
 
   // ── Load & render ─────────────────────────────────────────────────────────
 

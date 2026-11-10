@@ -4,11 +4,17 @@ from sqlalchemy import and_
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
+import json
 from database import SessionLocal, get_db
 from posting import fetch_posting_text
 from models import PipelineJob, Job, Company
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
+
+# preparing and ready are the application-workflow stages between saving a job
+# and applying (set by the portfolio studio's Render tool).
+STATUSES = ["saved", "preparing", "ready", "applied", "interviewing", "offer", "rejected"]
+MAX_WORK_BYTES = 2_000_000
 
 
 class PipelineJobResponse(BaseModel):
@@ -25,6 +31,10 @@ class PipelineJobResponse(BaseModel):
     notes: Optional[str]
     posting_text: Optional[str] = None
     posting_state: Optional[str] = None
+    # Progress on the application, for list views (the work itself is on the item).
+    has_suggestions: bool = False
+    has_letter: bool = False
+    checklist: Optional[dict] = None
 
 
 class PipelineSaveRequest(BaseModel):
@@ -44,14 +54,33 @@ class PipelineAddRequest(BaseModel):
     salary: Optional[str] = None
     notes: Optional[str] = None
     posting_text: Optional[str] = None
+    # For history imports (e.g. past LinkedIn applications): the real dates, and
+    # no posting fetch (the page is gone or behind a login).
+    applied_date: Optional[str] = None
+    saved_date: Optional[str] = None
+    fetch_posting: bool = True
 
 
 class PostingRequest(BaseModel):
     posting_text: str
 
 
+class PipelineItemResponse(PipelineJobResponse):
+    work: Optional[dict] = None
+
+
+class WorkRequest(BaseModel):
+    work: dict
+
+
+class ChecklistRequest(BaseModel):
+    checklist: dict
+
+
 class PipelineResponse(BaseModel):
     saved: List[PipelineJobResponse]
+    preparing: List[PipelineJobResponse] = []
+    ready: List[PipelineJobResponse] = []
     applied: List[PipelineJobResponse]
     rejected: List[PipelineJobResponse]
     interviewing: List[PipelineJobResponse]
@@ -75,7 +104,25 @@ def get_pipeline_job_response(pipeline_job: PipelineJob, db: Session) -> Pipelin
         notes=pipeline_job.notes,
         posting_text=pipeline_job.posting_text,
         posting_state=pipeline_job.posting_state,
+        **_progress(pipeline_job),
     )
+
+
+def _progress(pj: PipelineJob) -> dict:
+    try:
+        work = json.loads(pj.work_json) if pj.work_json else {}
+    except ValueError:
+        work = {}
+    try:
+        checklist = json.loads(pj.checklist_json) if pj.checklist_json else None
+    except ValueError:
+        checklist = None
+    return {
+        # Render stores {jobDesc, result: {suggestions: [...]}} per job.
+        "has_suggestions": bool(((work.get("suggestions") or {}).get("result") or {}).get("suggestions")),
+        "has_letter": bool((work.get("draft") or {}).get("doc")),
+        "checklist": checklist,
+    }
 
 
 def _fetch_posting_into(pipeline_job_id: int, url: str):
@@ -95,7 +142,7 @@ def _fetch_posting_into(pipeline_job_id: int, url: str):
 @router.post("/add", status_code=201)
 def add_pipeline_job_manual(request: PipelineAddRequest, background: BackgroundTasks, db: Session = Depends(get_db)):
     """Manually add a job to the pipeline without a search result."""
-    valid_statuses = ["saved", "applied", "rejected", "interviewing", "offer"]
+    valid_statuses = STATUSES
     if request.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status: {request.status}")
 
@@ -116,8 +163,17 @@ def add_pipeline_job_manual(request: PipelineAddRequest, background: BackgroundT
         status=request.status,
         notes=request.notes,
         posting_text=(request.posting_text or "").strip() or None,
-        posting_state="manual" if (request.posting_text or "").strip() else ("fetching" if request.url else None),
+        posting_state="manual" if (request.posting_text or "").strip() else ("fetching" if request.url and request.fetch_posting else None),
     )
+    for field in ("applied_date", "saved_date"):
+        value = getattr(request, field)
+        if value:
+            try:
+                setattr(pipeline_job, field, datetime.fromisoformat(value[:19]))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Bad {field}: {value}")
+    if request.status == "applied" and not pipeline_job.applied_date:
+        pipeline_job.applied_date = datetime.utcnow()
     db.add(pipeline_job)
     db.commit()
     db.refresh(pipeline_job)
@@ -163,13 +219,49 @@ def save_job(request: PipelineSaveRequest, background: BackgroundTasks, db: Sess
     return {"id": pipeline_job.id, "message": "Job saved to pipeline"}
 
 
-@router.get("/item/{pipeline_job_id}", response_model=PipelineJobResponse)
-def get_pipeline_item(pipeline_job_id: int, db: Session = Depends(get_db)):
-    """One pipeline entry, with its posting text (for the studio's Render tool)."""
+def _item(pj: PipelineJob, db: Session) -> PipelineItemResponse:
+    base = get_pipeline_job_response(pj, db).dict()
+    load = lambda s: json.loads(s) if s else None  # noqa: E731
+    return PipelineItemResponse(**base, work=load(pj.work_json))
+
+
+def _get(pipeline_job_id: int, db: Session) -> PipelineJob:
     pj = db.query(PipelineJob).filter(PipelineJob.id == pipeline_job_id).first()
     if not pj:
         raise HTTPException(status_code=404, detail="Pipeline job not found")
-    return get_pipeline_job_response(pj, db)
+    return pj
+
+
+@router.get("/item/{pipeline_job_id}", response_model=PipelineItemResponse)
+def get_pipeline_item(pipeline_job_id: int, db: Session = Depends(get_db)):
+    """One pipeline entry with its posting, work and checklist (for the studio's Render tool)."""
+    return _item(_get(pipeline_job_id, db), db)
+
+
+@router.put("/item/{pipeline_job_id}/work", response_model=PipelineItemResponse)
+def set_work(pipeline_job_id: int, request: WorkRequest, db: Session = Depends(get_db)):
+    """Store Render's work on this application. The first save moves a saved job to preparing."""
+    pj = _get(pipeline_job_id, db)
+    data = json.dumps(request.work)
+    if len(data) > MAX_WORK_BYTES:
+        raise HTTPException(status_code=413, detail="That draft is too large to keep.")
+    pj.work_json = data
+    if pj.status == "saved":
+        pj.status = "preparing"
+        pj.stage_changed_date = datetime.utcnow()
+    db.commit()
+    db.refresh(pj)
+    return _item(pj, db)
+
+
+@router.put("/item/{pipeline_job_id}/checklist", response_model=PipelineItemResponse)
+def set_checklist(pipeline_job_id: int, request: ChecklistRequest, db: Session = Depends(get_db)):
+    """Store the application checklist (resume updated, letter exported, …)."""
+    pj = _get(pipeline_job_id, db)
+    pj.checklist_json = json.dumps(request.checklist)
+    db.commit()
+    db.refresh(pj)
+    return _item(pj, db)
 
 
 @router.put("/item/{pipeline_job_id}/posting", response_model=PipelineJobResponse)
@@ -188,7 +280,7 @@ def set_posting(pipeline_job_id: int, request: PostingRequest, db: Session = Dep
 @router.get("", response_model=PipelineResponse)
 def get_pipeline(db: Session = Depends(get_db)):
     """Get all pipeline jobs grouped by status"""
-    statuses = ["saved", "applied", "rejected", "interviewing", "offer"]
+    statuses = STATUSES
     result = {}
 
     for status in statuses:
@@ -201,7 +293,7 @@ def get_pipeline(db: Session = Depends(get_db)):
 @router.get("/{status}", response_model=List[PipelineJobResponse])
 def get_pipeline_by_status(status: str, db: Session = Depends(get_db)):
     """Get pipeline jobs by status"""
-    valid_statuses = ["saved", "applied", "rejected", "interviewing", "offer"]
+    valid_statuses = STATUSES
     if status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
 
@@ -222,7 +314,7 @@ def update_pipeline_job(
     if not pipeline_job:
         raise HTTPException(status_code=404, detail="Pipeline job not found")
 
-    valid_statuses = ["saved", "applied", "rejected", "interviewing", "offer"]
+    valid_statuses = STATUSES
     if request.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status: {request.status}")
 

@@ -135,6 +135,11 @@ class PipelineJob(Base):
     # has it, fetched when the job is saved, or pasted for a manual entry.
     posting_text = Column(Text, nullable=True)
     posting_state = Column(String(20), nullable=True)  # ready, fetching, failed, manual
+    # The application work done in the portfolio studio's Render tool (letter
+    # draft, resume suggestions) and its checklist, as JSON. Kept here so an
+    # application survives a browser reset and reads the same on every machine.
+    work_json = Column(Text, nullable=True)
+    checklist_json = Column(Text, nullable=True)
     saved_date = Column(DateTime, default=datetime.utcnow)
     applied_date = Column(DateTime, nullable=True)
     stage_changed_date = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
