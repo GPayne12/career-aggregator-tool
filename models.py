@@ -131,6 +131,10 @@ class PipelineJob(Base):
     salary_range = Column(String(255), nullable=True)
     url = Column(String(500), nullable=False)
     status = Column(String(50), default="saved")  # saved, applied, rejected, interviewing, offer
+    # The full posting, kept with the application: copied from the scrape when it
+    # has it, fetched when the job is saved, or pasted for a manual entry.
+    posting_text = Column(Text, nullable=True)
+    posting_state = Column(String(20), nullable=True)  # ready, fetching, failed, manual
     saved_date = Column(DateTime, default=datetime.utcnow)
     applied_date = Column(DateTime, nullable=True)
     stage_changed_date = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

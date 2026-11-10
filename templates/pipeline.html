@@ -311,6 +311,10 @@
         <input type="text" id="aj-salary" placeholder="e.g. $90,000/yr">
       </div>
       <div class="modal-field">
+        <label>Posting <span style="font-weight:400;color:#aaa;">(optional: paste it, or leave blank to fetch it from the URL)</span></label>
+        <textarea id="aj-posting" rows="5" placeholder="Paste the full job posting…"></textarea>
+      </div>
+      <div class="modal-field">
         <label>Notes <span style="font-weight:400;color:#aaa;">(optional)</span></label>
         <textarea id="aj-notes" placeholder="Any notes…"></textarea>
       </div>
@@ -324,6 +328,10 @@
 </div>
 
 <script>
+  // Inside the portfolio studio, a card can hand its job to Render.
+  const IN_STUDIO = window.parent !== window;
+  function prepareJob(id) { parent.postMessage({ source: 'search', action: 'prepare', pipelineId: id }, '*'); }
+
   let pipelineData   = null;
   let draggingJobId  = null;
   let draggingStatus = null;
@@ -425,6 +433,7 @@
       <div class="k-company" title="${escH(job.company)}">${escH(job.company)}</div>
       <div class="k-actions">
         <a class="k-link" href="${escH(job.url)}" target="_blank">View ↗</a>
+        ${IN_STUDIO ? `<button class="k-prepare" onclick="prepareJob(${job.id})" title="Resume suggestions and a cover letter for this job">Prepare →</button>` : ''}
         <button class="k-del" onclick="deleteJob(${job.id})" title="Remove">✕</button>
       </div>`;
 
@@ -491,6 +500,7 @@
       status:  document.getElementById('aj-status').value,
       salary:  document.getElementById('aj-salary').value.trim() || null,
       notes:   document.getElementById('aj-notes').value.trim()  || null,
+      posting_text: document.getElementById('aj-posting').value.trim() || null,
     };
 
     btn.disabled   = true;

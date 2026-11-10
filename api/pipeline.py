@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
-from database import get_db
+from database import SessionLocal, get_db
+from posting import fetch_posting_text
 from models import PipelineJob, Job, Company
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
@@ -22,6 +23,8 @@ class PipelineJobResponse(BaseModel):
     saved_date: str
     applied_date: Optional[str]
     notes: Optional[str]
+    posting_text: Optional[str] = None
+    posting_state: Optional[str] = None
 
 
 class PipelineSaveRequest(BaseModel):
@@ -40,6 +43,11 @@ class PipelineAddRequest(BaseModel):
     status: str = "saved"
     salary: Optional[str] = None
     notes: Optional[str] = None
+    posting_text: Optional[str] = None
+
+
+class PostingRequest(BaseModel):
+    posting_text: str
 
 
 class PipelineResponse(BaseModel):
@@ -65,11 +73,27 @@ def get_pipeline_job_response(pipeline_job: PipelineJob, db: Session) -> Pipelin
         saved_date=pipeline_job.saved_date.isoformat() if pipeline_job.saved_date else None,
         applied_date=pipeline_job.applied_date.isoformat() if pipeline_job.applied_date else None,
         notes=pipeline_job.notes,
+        posting_text=pipeline_job.posting_text,
+        posting_state=pipeline_job.posting_state,
     )
 
 
+def _fetch_posting_into(pipeline_job_id: int, url: str):
+    """Background task: fetch the posting and store it on the pipeline entry."""
+    text, state = fetch_posting_text(url)
+    db = SessionLocal()
+    try:
+        pj = db.query(PipelineJob).filter(PipelineJob.id == pipeline_job_id).first()
+        if pj and pj.posting_state == "fetching":
+            pj.posting_text = text
+            pj.posting_state = state
+            db.commit()
+    finally:
+        db.close()
+
+
 @router.post("/add", status_code=201)
-def add_pipeline_job_manual(request: PipelineAddRequest, db: Session = Depends(get_db)):
+def add_pipeline_job_manual(request: PipelineAddRequest, background: BackgroundTasks, db: Session = Depends(get_db)):
     """Manually add a job to the pipeline without a search result."""
     valid_statuses = ["saved", "applied", "rejected", "interviewing", "offer"]
     if request.status not in valid_statuses:
@@ -91,15 +115,19 @@ def add_pipeline_job_manual(request: PipelineAddRequest, db: Session = Depends(g
         url=request.url,
         status=request.status,
         notes=request.notes,
+        posting_text=(request.posting_text or "").strip() or None,
+        posting_state="manual" if (request.posting_text or "").strip() else ("fetching" if request.url else None),
     )
     db.add(pipeline_job)
     db.commit()
     db.refresh(pipeline_job)
+    if pipeline_job.posting_state == "fetching":
+        background.add_task(_fetch_posting_into, pipeline_job.id, request.url)
     return get_pipeline_job_response(pipeline_job, db)
 
 
 @router.post("/save", status_code=201)
-def save_job(request: PipelineSaveRequest, db: Session = Depends(get_db)):
+def save_job(request: PipelineSaveRequest, background: BackgroundTasks, db: Session = Depends(get_db)):
     """Save a job to the pipeline"""
     # Get the job
     job = db.query(Job).filter(Job.id == request.job_id).first()
@@ -122,12 +150,39 @@ def save_job(request: PipelineSaveRequest, db: Session = Depends(get_db)):
         salary_range=job.salary_range,
         url=job.url,
         status="saved",
+        # The scrape already has the full text for Greenhouse and Lever postings.
+        posting_text=job.description if job.description and len(job.description) >= 400 else None,
+        posting_state="ready" if job.description and len(job.description) >= 400 else "fetching",
     )
     db.add(pipeline_job)
     db.commit()
     db.refresh(pipeline_job)
+    if pipeline_job.posting_state == "fetching":
+        background.add_task(_fetch_posting_into, pipeline_job.id, job.url)
 
     return {"id": pipeline_job.id, "message": "Job saved to pipeline"}
+
+
+@router.get("/item/{pipeline_job_id}", response_model=PipelineJobResponse)
+def get_pipeline_item(pipeline_job_id: int, db: Session = Depends(get_db)):
+    """One pipeline entry, with its posting text (for the studio's Render tool)."""
+    pj = db.query(PipelineJob).filter(PipelineJob.id == pipeline_job_id).first()
+    if not pj:
+        raise HTTPException(status_code=404, detail="Pipeline job not found")
+    return get_pipeline_job_response(pj, db)
+
+
+@router.put("/item/{pipeline_job_id}/posting", response_model=PipelineJobResponse)
+def set_posting(pipeline_job_id: int, request: PostingRequest, db: Session = Depends(get_db)):
+    """Store a pasted posting (when the fetch failed, or for a manual entry)."""
+    pj = db.query(PipelineJob).filter(PipelineJob.id == pipeline_job_id).first()
+    if not pj:
+        raise HTTPException(status_code=404, detail="Pipeline job not found")
+    pj.posting_text = request.posting_text.strip() or None
+    pj.posting_state = "manual" if pj.posting_text else None
+    db.commit()
+    db.refresh(pj)
+    return get_pipeline_job_response(pj, db)
 
 
 @router.get("", response_model=PipelineResponse)

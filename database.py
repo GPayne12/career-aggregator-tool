@@ -23,6 +23,8 @@ def init_db():
             "ALTER TABLE companies ADD COLUMN score_m INTEGER",
             "ALTER TABLE companies ADD COLUMN score_p INTEGER",
             "ALTER TABLE jobs ADD COLUMN description TEXT",
+            "ALTER TABLE pipeline_jobs ADD COLUMN posting_text TEXT",
+            "ALTER TABLE pipeline_jobs ADD COLUMN posting_state VARCHAR(20)",
             "CREATE TABLE IF NOT EXISTS settings (key VARCHAR(100) PRIMARY KEY, value TEXT NOT NULL)",
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('exclude_terms', '[\"intern\", \"internship\", \"co-op\", \"co op\"]')",
         ]:

@@ -828,3 +828,50 @@ a:hover {
     padding: 0.75rem 0.5rem;
   }
 }
+
+/* Embedded in the portfolio studio: no banner (the studio's toolbar has the menu),
+   and the portfolio's look: Source Serif for reading, JetBrains Mono for labels,
+   warm paper background, forest green as the one accent. */
+body.embedded { background-color: #faf9f7; color: #1a1916; font-family: 'Source Serif 4', Georgia, serif; }
+body.embedded .container { margin: 1.5rem auto; }
+body.embedded h1, body.embedded h2, body.embedded h3, body.embedded .page-title { font-family: 'Source Serif 4', Georgia, serif; font-weight: 600; color: #1a1916; }
+body.embedded .page-title { font-size: 1.6rem; }
+body.embedded a { color: #2d6a4f; }
+body.embedded a:hover { color: #235840; }
+body.embedded label, body.embedded th, body.embedded .badge, body.embedded small,
+body.embedded button, body.embedded .btn, body.embedded input, body.embedded select { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+body.embedded button, body.embedded .btn, body.embedded .btn-primary { background-color: #2d6a4f; border-color: #2d6a4f; color: #fff; border-radius: 999px; }
+body.embedded button:hover, body.embedded .btn:hover { background-color: #235840; }
+body.embedded .card, body.embedded .stat-card, body.embedded section, body.embedded table { border-color: #d4cfc7; }
+body.embedded input, body.embedded select, body.embedded textarea { border: 1px solid #d4cfc7; border-radius: 6px; background: #fffefb; }
+body.embedded button.secondary, body.embedded .btn-secondary { background: transparent; color: #1a1916; border: 1px solid #d4cfc7; }
+body.embedded button.secondary:hover { background: #f0ede7; }
+/* Segmented pills and chips: only the chosen one is filled. */
+body.embedded .pill, body.embedded .chip, body.embedded .company-chip { background: transparent; color: #1a1916; border: 1px solid #d4cfc7; }
+body.embedded .pill:hover, body.embedded .chip:hover, body.embedded .company-chip:hover { background: #f0ede7; }
+body.embedded .pill.active, body.embedded .chip.active { background: #2d6a4f; border-color: #2d6a4f; color: #fff; }
+body.embedded .company-chip.skipped { opacity: .55; }
+body.embedded .exclude-chip button { background: none; color: inherit; border: 0; padding: 0 2px; }
+
+/* Studio type system (embedded only): two faces, five sizes, same as every studio screen.
+   Mono 12px for controls and labels; serif 13/15 for reading and writing; 18/24 headings. */
+body.embedded { font-size: 15px; line-height: 1.55; }
+body.embedded .page-title, body.embedded h1 { font-size: 24px; }
+body.embedded h2, body.embedded h3 { font-size: 18px; }
+body.embedded p, body.embedded td, body.embedded li { font-size: 15px; }
+body.embedded small, body.embedded .muted, body.embedded .help, body.embedded .empty, body.embedded .text-muted { font-size: 13px; }
+body.embedded label, body.embedded th, body.embedded .badge, body.embedded .pill, body.embedded .chip, body.embedded .company-chip,
+body.embedded .exclude-chip, body.embedded .stat-label, body.embedded button, body.embedded .btn {
+  font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; text-transform: none; letter-spacing: .02em; }
+body.embedded input, body.embedded select, body.embedded textarea { font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; }
+body.embedded .stat-value { font-family: 'Source Serif 4', Georgia, serif; }
+/* Embedded type, enforced over the app's own sizes (embedded only). */
+body.embedded .container button, body.embedded .container .btn, body.embedded .filter-label, body.embedded .kanban-col-title,
+body.embedded .kanban-col-count, body.embedded .stat-label { font-family: 'JetBrains Mono', ui-monospace, monospace !important; font-size: 12px !important; }
+body.embedded .container a, body.embedded .text-muted, body.embedded .kanban-empty, body.embedded .stat-link { font-size: 13px !important; }
+body.embedded .container p a { font-size: inherit !important; }
+body.embedded .stat-value { font-size: 24px !important; }
+body.embedded .k-prepare { padding: 2px 9px !important; border-radius: 999px; margin-left: auto; margin-right: 4px; }
+body.embedded .kanban-col-title { text-transform: none !important; letter-spacing: .02em !important; }
+body.embedded .k-del { background: none !important; color: #8a857c !important; border: 0 !important; padding: 0 4px !important; }
+body.embedded .k-del:hover { color: #b42318 !important; }
