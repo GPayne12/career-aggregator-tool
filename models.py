@@ -20,12 +20,23 @@ class Company(Base):
     score_a = Column(Integer, nullable=True)
     score_m = Column(Integer, nullable=True)
     score_p = Column(Integer, nullable=True)
+    # Where the company lives online, and how sure we are of its career page.
+    # url_status: verified (George confirmed it; only these are scraped),
+    # found (a job board answered and matches), page (a careers page, no board),
+    # website (website only), none, or unverified (typed in, not yet confirmed).
+    website = Column(String(500), nullable=True)
+    url_status = Column(String(20), nullable=True)
+    url_source = Column(String(30), nullable=True)   # discovery, manual, legacy
+    verified_at = Column(DateTime, nullable=True)
+    check_json = Column(Text, nullable=True)         # the last Check: what a scrape would find
 
     def to_dict(self):
         return {
             "id": self.id,
             "name": self.name,
             "career_url": self.career_url,
+            "website": self.website,
+            "url_status": self.url_status,
             "notes": self.notes,
             "is_active": self.is_active,
             "is_skipped": self.is_skipped,
@@ -118,6 +129,17 @@ class Setting(Base):
 
     key = Column(String(100), primary_key=True)
     value = Column(Text, nullable=False)
+
+
+class Discovery(Base):
+    """What discover.py found for a company name, cached by its normalised key
+    (the same key the studio's intake uses). Covers names not yet in Search."""
+    __tablename__ = "discoveries"
+
+    key = Column(String(255), primary_key=True)
+    name = Column(String(255), nullable=False)
+    result_json = Column(Text, nullable=False)
+    checked_at = Column(DateTime, default=datetime.utcnow)
 
 
 class PipelineJob(Base):

@@ -108,15 +108,26 @@ GENERIC_SELECTORS = [
 
 
 class JobScraper:
-    def __init__(self, rate_limit_seconds: float = 1.5):
+    def __init__(self, rate_limit_seconds: float = 1.5, max_pages: Optional[int] = None,
+                 page_timeout_ms: int = 60000):
         self.rate_limit_seconds = rate_limit_seconds
+        # A Check (a trial scrape George runs to judge a career page) reads only
+        # the first pages, and gives a slow page less time.
+        self.max_pages = max_pages
+        self.page_timeout_ms = page_timeout_ms
         self._playwright = None
         self._browser = None
 
     def _get_browser(self):
         if self._browser is None:
             self._playwright = sync_playwright().start()
-            self._browser = self._playwright.chromium.launch(headless=True)
+            # The installed Chrome first: Playwright's own browser goes missing
+            # whenever the package updates (it had, on the Hub, until 2026-11-10,
+            # and every careers-page scrape failed silently).
+            try:
+                self._browser = self._playwright.chromium.launch(channel='chrome', headless=True)
+            except Exception:
+                self._browser = self._playwright.chromium.launch(headless=True)
         return self._browser
 
     def close(self):
@@ -186,10 +197,15 @@ class JobScraper:
         logger.info(f"Workday API: POST {api_url}")
 
         jobs: List[Dict] = []
+        seen_urls: set = set()
         offset = 0
         limit = 20
+        pages = 0
 
         while True:
+            if self.max_pages and pages >= self.max_pages:
+                break
+            pages += 1
             try:
                 time.sleep(self.rate_limit_seconds)
                 resp = requests.post(
@@ -208,18 +224,24 @@ class JobScraper:
                 if not postings:
                     break
 
+                new_on_page = 0
                 for p in postings:
                     title = p.get('title', '')
                     location = p.get('locationsText', '')
                     posted_on = p.get('postedOn', '')
                     ext_path = p.get('externalPath', '')
-                    job_url = f"{base}{ext_path}" if ext_path else ''
-                    if title and job_url:
+                    # The posting page lives under the board: /{board}/job/…
+                    # Without the board the link doesn't open (tested 2026-11-10).
+                    job_url = f"{base}/{board}{ext_path}" if ext_path else ''
+                    if title and job_url and job_url not in seen_urls:
+                        seen_urls.add(job_url)
+                        new_on_page += 1
                         jobs.append({'title': title, 'location': location,
                                      'salary': None, 'url': job_url,
                                      'posted_date': posted_on})
 
-                if len(postings) < limit:
+                # Workday can hand back the same page again; stop when a page brings nothing new.
+                if len(postings) < limit or new_on_page == 0:
                     break
                 offset += limit
 
@@ -410,7 +432,8 @@ class JobScraper:
 
                 for p in postings:
                     title = p.get('name', '')
-                    job_url = p.get('ref', '')
+                    # 'ref' is the API's own address; people open the posting page.
+                    job_url = f"https://jobs.smartrecruiters.com/{company}/{p['id']}" if p.get('id') else ''
                     loc_obj = p.get('location') or {}
                     loc_parts = [
                         loc_obj.get('city', ''),
@@ -444,7 +467,7 @@ class JobScraper:
             browser = self._get_browser()
             page = browser.new_page()
             page.set_extra_http_headers({'User-Agent': HEADERS['User-Agent']})
-            page.goto(url, wait_until='domcontentloaded', timeout=60000)
+            page.goto(url, wait_until='domcontentloaded', timeout=self.page_timeout_ms)
             return page.content()
         except PlaywrightTimeoutError:
             logger.warning(f"Page load timeout for {url}")

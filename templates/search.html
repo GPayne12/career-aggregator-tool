@@ -96,6 +96,7 @@
     btn.disabled = true;
     btn.textContent = 'Scraping…';
     timedOutCompanies = [];
+    let heldCount = 0;
     status.innerHTML = `
       <div class="scrape-progress">
         <div class="progress-bar-track"><div class="progress-bar-fill" id="scrape-bar"></div></div>
@@ -107,7 +108,8 @@
     source.onmessage = function(e) {
       const d = JSON.parse(e.data);
       if (d.type === 'start') {
-        label.textContent = `Scraping 0 of ${d.total} companies…`;
+        label.textContent = `Scraping 0 of ${d.total} verified companies…`;
+        heldCount = d.held || 0;
       } else if (d.type === 'progress') {
         bar.style.width = Math.round((d.index / d.total) * 100) + '%';
         label.textContent = `Scraping ${d.index} of ${d.total} — ${escH(d.company)}…`;
@@ -123,7 +125,8 @@
             <ul>${timedOutCompanies.map(c => `<li>${escH(c)}</li>`).join('')}</ul>
           </div>`;
         }
-        label.innerHTML = `Done &mdash; <strong>${d.total_added}</strong> new jobs &nbsp;·&nbsp; <strong>${d.pruned}</strong> pruned &nbsp;·&nbsp; <strong>${d.errors}</strong> errors${timeoutHtml}`;
+        const heldHtml = heldCount ? `<div class="text-muted" style="margin-top:.4rem;">${heldCount} more compan${heldCount === 1 ? "y waits" : "ies wait"} for you to verify a career page. <a href="/companies/manage">Review them in Companies →</a></div>` : "";
+        label.innerHTML = `Done &mdash; <strong>${d.total_added}</strong> new jobs &nbsp;·&nbsp; <strong>${d.closed || 0}</strong> closed &nbsp;·&nbsp; <strong>${d.pruned}</strong> pruned &nbsp;·&nbsp; <strong>${d.errors}</strong> errors${timeoutHtml}${heldHtml}`;
         document.getElementById('scrape-last').textContent = 'Last run: ' + new Date().toLocaleTimeString();
         btn.disabled = false;
         btn.textContent = 'Scrape Now';

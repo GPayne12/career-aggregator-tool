@@ -29,6 +29,18 @@ def init_db():
             "ALTER TABLE pipeline_jobs ADD COLUMN checklist_json TEXT",
             "CREATE TABLE IF NOT EXISTS settings (key VARCHAR(100) PRIMARY KEY, value TEXT NOT NULL)",
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('exclude_terms', '[\"intern\", \"internship\", \"co-op\", \"co op\"]')",
+            "ALTER TABLE companies ADD COLUMN website VARCHAR(500)",
+            "ALTER TABLE companies ADD COLUMN url_status VARCHAR(20)",
+            "ALTER TABLE companies ADD COLUMN url_source VARCHAR(30)",
+            "ALTER TABLE companies ADD COLUMN verified_at DATETIME",
+            "ALTER TABLE companies ADD COLUMN check_json TEXT",
+            # Scraping now waits for George to verify each career page. Pages
+            # that already produced jobs have proved themselves and keep running;
+            # other typed-in pages wait. Both only touch rows not yet labelled.
+            "UPDATE companies SET url_status = 'verified', url_source = 'legacy', verified_at = CURRENT_TIMESTAMP "
+            "WHERE url_status IS NULL AND career_url != '' AND id IN (SELECT DISTINCT company_id FROM jobs)",
+            "UPDATE companies SET url_status = 'unverified', url_source = 'legacy' "
+            "WHERE url_status IS NULL AND career_url != ''",
         ]:
             try:
                 conn.execute(text(stmt))

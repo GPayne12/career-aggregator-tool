@@ -115,16 +115,25 @@ def iter_scrape() -> Generator[dict, None, None]:
         raw_keywords = [kw for p in db.query(KeywordProfile).all() for kw in p.get_keywords()]
         keywords_lower = [kw.lower() for kw in expand_keywords(raw_keywords)] if raw_keywords else []
 
+        # Only career pages George has verified are scraped; the rest wait in
+        # Companies until he checks them.
         companies = db.query(Company).filter(
             Company.is_active == True,
             Company.is_skipped == False,
+            Company.url_status == 'verified',
         ).all()
+        held = db.query(Company).filter(
+            Company.is_active == True,
+            Company.is_skipped == False,
+            (Company.url_status != 'verified') | (Company.url_status == None),
+        ).count()
         total = len(companies)
         total_added = 0
         errors = 0
         timed_out_count = 0
+        closed_total = 0
 
-        yield {"type": "start", "total": total}
+        yield {"type": "start", "total": total, "held": held}
 
         for i, company in enumerate(companies, 1):
             if not company.career_url:
@@ -136,6 +145,14 @@ def iter_scrape() -> Generator[dict, None, None]:
             try:
                 scraped_jobs = scraper.scrape_career_page(company.career_url)
                 added = _save_jobs(db, scraper, company, scraped_jobs, exclude_terms, keywords_lower)
+                # A posting that's no longer on the board has closed. Only when the
+                # board answered: an empty or failed read says nothing about closures.
+                if scraped_jobs:
+                    still_open = {j['url'] for j in scraped_jobs if j.get('url')}
+                    for job in db.query(Job).filter(Job.company_id == company.id, Job.is_active == True).all():
+                        if job.url not in still_open:
+                            job.is_active = False
+                            closed_total += 1
                 db.commit()
                 total_added += added
                 logger.info(f"Scraped {company.name}: {len(scraped_jobs)} found, {added} new")
@@ -167,7 +184,7 @@ def iter_scrape() -> Generator[dict, None, None]:
             job.is_active = False
         db.commit()
 
-        yield {"type": "done", "total_added": total_added,
+        yield {"type": "done", "total_added": total_added, "closed": closed_total, "held": held,
                "pruned": len(pruned_jobs), "timed_out": timed_out_count, "errors": errors}
 
     except Exception as e:
