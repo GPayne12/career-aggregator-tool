@@ -31,6 +31,7 @@ class CompanyCreate(BaseModel):
     website: Optional[str] = None
     url_status: Optional[str] = None
     url_source: Optional[str] = None
+    score_m: Optional[int] = None    # starting motivation, e.g. from LinkedIn activity
 
 
 class CompanyUpdate(BaseModel):
@@ -154,6 +155,49 @@ def list_companies(db: Session = Depends(get_db)):
     p_scores = _compute_p_scores(db)
     found = _discoveries(db)
     return [_to_response(c, p_scores.get(c.id, 0), found.get(company_key(c.name))) for c in companies]
+
+
+@router.get("/field")
+def company_field(db: Session = Depends(get_db)):
+    """Everything the Overview's company field draws, in one call: each active
+    company with its interest (A, M, P), its open and keyword-matched postings,
+    and its applications. The page decides the band and size from these."""
+    from models import PipelineJob
+    now = datetime.utcnow()
+    week, fresh = now - timedelta(days=7), now - timedelta(days=3)
+    profiles = db.query(KeywordProfile).all()
+    keywords = list({kw.lower() for p in profiles for kw in p.get_keywords()})
+
+    open_jobs: Dict[int, int] = {}
+    matched: Dict[int, int] = {}
+    fresh_matched: Dict[int, int] = {}
+    for cid, title, fetched in db.query(Job.company_id, Job.title, Job.fetched_at).filter(
+            Job.is_active == True, Job.fetched_at >= week).all():
+        open_jobs[cid] = open_jobs.get(cid, 0) + 1
+        if keywords and any(k in title.lower() for k in keywords):
+            matched[cid] = matched.get(cid, 0) + 1
+            if fetched and fetched >= fresh:
+                fresh_matched[cid] = fresh_matched.get(cid, 0) + 1
+
+    apps: Dict[int, List[Dict]] = {}
+    for p in db.query(PipelineJob).order_by(PipelineJob.stage_changed_date.desc()).all():
+        apps.setdefault(p.company_id, []).append({
+            "id": p.id, "title": p.title, "url": p.url, "status": p.status,
+            "applied_date": p.applied_date.isoformat() if p.applied_date else None,
+            "changed": p.stage_changed_date.isoformat() if p.stage_changed_date else None,
+        })
+
+    out = []
+    for c in db.query(Company).filter(Company.is_active == True).all():
+        out.append({
+            "id": c.id, "name": c.name, "website": c.website, "career_url": c.career_url or "",
+            "url_status": c.url_status, "is_skipped": bool(c.is_skipped),
+            "score_a": c.score_a, "score_m": c.score_m, "score_p": min(3, matched.get(c.id, 0)),
+            "open_jobs": open_jobs.get(c.id, 0), "matched_jobs": matched.get(c.id, 0),
+            "fresh_matched": fresh_matched.get(c.id, 0),
+            "applications": apps.get(c.id, []),
+        })
+    return {"companies": out, "profiles": len(profiles), "now": now.isoformat(timespec="seconds")}
 
 
 @router.get("/all", response_model=List[CompanyResponse])
@@ -390,13 +434,16 @@ def create_company(company: CompanyCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"url_status must be one of {', '.join(STATUSES)}")
     if company.url_status == "verified":
         raise HTTPException(status_code=400, detail="Verify a company after adding it")
+    if company.score_m is not None and not (0 <= company.score_m <= 3):
+        raise HTTPException(status_code=400, detail="score_m must be between 0 and 3")
 
     career_url = (company.career_url or "").strip()
     url_status = company.url_status or ("unverified" if career_url else None)
     db_company = Company(name=company.name, career_url=career_url,
                          website=(company.website or "").strip() or None,
                          url_status=url_status,
-                         url_source=company.url_source or ("manual" if career_url else None))
+                         url_source=company.url_source or ("manual" if career_url else None),
+                         score_m=company.score_m)
     db.add(db_company)
     db.commit()
     db.refresh(db_company)

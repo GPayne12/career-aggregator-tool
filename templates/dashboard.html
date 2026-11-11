@@ -1,284 +1,511 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Career Aggregator{% endblock %}
+{% block title %}Overview - Career Aggregator{% endblock %}
 
-{% block content %}
-<div class="page-title">Dashboard</div>
+{#- Overview: every company as a dot, drawn by how far along it is with you.
+      position (band, outside in)  closed · watching · preparing · applied · talking
+      size                         your interest: advocacy + motivation + matching postings (0–9)
+      filled / hollow              Search scrapes its verified career page / not yet verified
+      tangerine pulse              something new this week: a stage change, or fresh matching postings
+    Click a dot for the company: turn its interest up (the dot grows), see its
+    applications, open Prepare. The List view and the edit dialog carry over
+    everything the old dashboard did. -#}
 
-<!-- Company Edit Modal -->
-<div id="company-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:10px;padding:1.5rem;width:340px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.18);">
-    <h3 style="margin:0 0 1rem;">Edit Company</h3>
+{% block bar %}
+<nav class="bar3" aria-label="Overview">
+  <a class="bar3-item" href="/search"><b id="n-jobs">—</b> jobs available</a>
+  <a class="bar3-item" href="/pipeline"><b id="n-pipeline">—</b> in pipeline</a>
+  <a class="bar3-item" href="/companies/manage"><b id="n-companies">—</b> companies</a>
+  <a class="bar3-item" href="/profiles/manage"><b id="n-profiles">—</b> keyword profiles</a>
+  <span class="bar3-spacer"></span>
+  <label class="bar3-find"><span class="sr">Find a company</span>
+    <input id="find" type="search" placeholder="Find a company" autocomplete="off" list="find-list"><datalist id="find-list"></datalist></label>
+  <div class="bar3-views" role="tablist" aria-label="View">
+    <button type="button" class="bar3-item is-on" data-view="field" role="tab" aria-selected="true">Field</button>
+    <button type="button" class="bar3-item" data-view="list" role="tab" aria-selected="false">List</button>
+  </div>
+</nav>
+{% endblock %}
+
+{% block wide %}
+<div class="ov">
+  <section class="ov-main" aria-label="Companies">
+    <div class="ov-field" id="field">
+      <svg id="field-svg" role="img" aria-labelledby="field-title"><title id="field-title">Companies by how far along each is, sized by your interest</title></svg>
+      <div class="ov-tip" id="tip" hidden></div>
+      <p class="ov-empty" id="field-empty" hidden></p>
+    </div>
+    <div class="ov-list" id="list" hidden></div>
+  </section>
+  <aside class="ov-panel" id="panel" aria-live="polite"></aside>
+</div>
+
+<!-- Company edit dialog (from the old dashboard) -->
+<div id="company-edit-modal" class="ce-backdrop" hidden>
+  <div class="ce-box" role="dialog" aria-modal="true" aria-labelledby="ce-title">
+    <h3 id="ce-title">Edit company</h3>
     <input type="hidden" id="ce-id">
-    <div style="display:flex;flex-direction:column;gap:0.55rem;">
-      <div>
-        <label style="font-size:0.8rem;color:#666;display:block;margin-bottom:0.2rem;">Company Name</label>
-        <input type="text" id="ce-name" style="margin:0;width:100%;box-sizing:border-box;">
-      </div>
-      <div>
-        <label style="font-size:0.8rem;color:#666;display:block;margin-bottom:0.2rem;">Career URL</label>
-        <input type="url" id="ce-url" placeholder="https://…" style="margin:0;width:100%;box-sizing:border-box;">
-      </div>
-      <div style="display:flex;align-items:center;gap:0.6rem;margin-top:0.2rem;">
-        <label style="position:relative;display:inline-block;width:38px;height:20px;flex-shrink:0;">
-          <input type="checkbox" id="ce-skip" style="opacity:0;width:0;height:0;margin:0;">
-          <span id="ce-track" style="position:absolute;inset:0;border-radius:20px;background:#ccc;transition:background 0.2s;cursor:pointer;"
-                onclick="document.getElementById('ce-skip').click()"></span>
-          <span id="ce-thumb" style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:transform 0.2s;pointer-events:none;"></span>
-        </label>
-        <span id="ce-skip-label" style="font-size:0.88rem;color:#444;">Active</span>
-      </div>
-    </div>
-    <div id="ce-error" style="color:#e74c3c;font-size:0.82rem;margin-top:0.5rem;min-height:1rem;"></div>
-    <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem;">
-      <button class="secondary" onclick="closeCompanyEdit()">Cancel</button>
-      <button onclick="saveCompanyEdit()">Save</button>
+    <label class="ce-label" for="ce-name">Company name</label>
+    <input type="text" id="ce-name">
+    <label class="ce-label" for="ce-url">Career page</label>
+    <input type="url" id="ce-url" placeholder="https://…">
+    <label class="ce-skip"><input type="checkbox" id="ce-skip"> Skipped (never scraped, hidden from the field)</label>
+    <p class="ce-error" id="ce-error"></p>
+    <div class="ce-actions">
+      <button type="button" class="secondary" onclick="closeCompanyEdit()">Cancel</button>
+      <button type="button" onclick="saveCompanyEdit()">Save</button>
     </div>
   </div>
 </div>
 
-<!-- Stat Cards -->
-<div class="stat-grid">
-  <div class="stat-card">
-    <div class="stat-value" id="stat-jobs">—</div>
-    <div class="stat-label">Jobs Available</div>
-    <a href="/search" class="stat-link">Search →</a>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value" id="stat-pipeline">—</div>
-    <div class="stat-label">In Pipeline</div>
-    <a href="/pipeline" class="stat-link">View Pipeline →</a>
-  </div>
-  <div class="stat-card" style="cursor:pointer;" onclick="location.href='/companies/manage'">
-    <div class="stat-value" id="stat-companies">—</div>
-    <div class="stat-label">Companies Tracked</div>
-    <a href="/companies/manage" class="stat-link">Manage →</a>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value" id="stat-profiles">—</div>
-    <div class="stat-label">Keyword Profiles</div>
-    <a href="/profiles/manage" class="stat-link">Manage →</a>
-  </div>
-</div>
+<style>
+  /* ── Third bar: the studio's second toolbar, one level down ───────────── */
+  .bar3 { display:flex; align-items:center; gap:4px; padding:7px 20px; min-height:44px; box-sizing:border-box;
+          background:#faf9f7; border-bottom:1px solid #d4cfc7; position:sticky; top:0; z-index:5; }
+  .bar3-item { border:0 !important; background:none !important; cursor:pointer; padding:6px 12px; border-radius:6px; text-decoration:none;
+               font:500 12px 'JetBrains Mono', ui-monospace, monospace !important; color:#5c5a55 !important; }
+  .bar3-item b { color:#1a1916; font-weight:700; }
+  .bar3-item:hover { background:#f0ede7 !important; }
+  .bar3-item.is-on { color:#2d6a4f !important; background:color-mix(in srgb, #2d6a4f 10%, transparent) !important; }
+  body.embedded .bar3 button.bar3-item { border-radius:6px; }
+  .bar3-spacer { flex:1; }
+  .bar3-views { display:flex; gap:2px; }
+  .bar3-find input { width:200px; margin:0; padding:5px 10px !important; font:12px 'JetBrains Mono', ui-monospace, monospace !important;
+                     border:1px solid #d4cfc7; border-radius:999px; background:#fffefb; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 
-<!-- Recently Saved Jobs + Pipeline Summary -->
-<div class="dashboard-grid">
+  /* ── Layout: the field, with the panel beside it ─────────────────────── */
+  .ov { display:grid; grid-template-columns: minmax(0,1fr) 360px; height:calc(100vh - 44px); }
+  .ov-main { position:relative; min-width:0; }
+  .ov-field { position:absolute; inset:0; }
+  .ov-field svg { width:100%; height:100%; display:block; }
+  .ov-empty { position:absolute; top:45%; width:100%; text-align:center; color:#8a857c; }
+  .ov-panel { border-left:1px solid #d4cfc7; background:#fffefb; overflow:auto; padding:20px 22px 28px; }
+  @media (max-width: 900px) { .ov { grid-template-columns:1fr; height:auto; } .ov-main { height:70vh; } .ov-panel { border-left:0; border-top:1px solid #d4cfc7; } }
 
-  <div class="card">
-    <div class="section-header">
-      <h3>Recently Saved Jobs</h3>
-      <a href="/pipeline">View pipeline →</a>
-    </div>
-    <div id="recent-jobs"><p class="text-muted">Loading…</p></div>
-  </div>
+  /* Bands and their labels */
+  .band { fill:none; stroke:#d4cfc7; stroke-width:1; }
+  .band.is-live { stroke-dasharray:2 4; }
+  .band-fill { stroke:none; }
+  .band-label { font:600 12px 'JetBrains Mono', ui-monospace, monospace; fill:#5c5a55; letter-spacing:.02em; }
+  .band-count { font:12px 'JetBrains Mono', ui-monospace, monospace; fill:#8a857c; }
 
-  <div class="card">
-    <div class="section-header">
-      <h3>Pipeline Summary</h3>
-      <a href="/pipeline">View all →</a>
-    </div>
-    <div id="pipeline-summary"><p class="text-muted">Loading…</p></div>
-  </div>
+  /* Dots */
+  .dot { cursor:pointer; transition: r .5s cubic-bezier(.2,.8,.2,1); }
+  .dot-hit { fill:transparent; cursor:pointer; }
+  .node.is-dim { opacity:.18; }
+  .node.is-sel .dot { stroke:#1a1916 !important; stroke-width:2.5px !important; }
+  .node-label { font:13px 'Source Serif 4', Georgia, serif; fill:#1a1916; pointer-events:none; paint-order:stroke; stroke:#faf9f7; stroke-width:3px; stroke-linejoin:round; }
+  .pulse { fill:none; stroke:#c47f00; stroke-width:2; transform-box:fill-box; transform-origin:center; animation:pulse 2.4s ease-out infinite; pointer-events:none; }
+  @keyframes pulse { 0% { transform:scale(1); opacity:.9; } 100% { transform:scale(2.4); opacity:0; } }
+  @media (prefers-reduced-motion: reduce) { .pulse { animation:none; opacity:.8; } .dot { transition:none; } }
 
-</div>
+  /* Tooltip */
+  .ov-tip { position:absolute; z-index:4; pointer-events:none; max-width:280px; padding:10px 12px; border-radius:8px; background:#1a1916; color:#ece9e2;
+            box-shadow:0 6px 20px rgba(0,0,0,.25); font:13px/1.45 'Source Serif 4', Georgia, serif; }
+  .ov-tip b { display:block; font-size:15px; color:#fff; margin-bottom:2px; }
+  .ov-tip .k { font:12px 'JetBrains Mono', ui-monospace, monospace; color:#a7abb6; }
 
-<!-- Active Companies -->
-<div class="card">
-  <div class="section-header">
-    <h3>Tracked Companies</h3>
-    <a href="/companies/manage">Manage →</a>
-  </div>
-  <div id="companies-list"><p class="text-muted">Loading…</p></div>
-</div>
+  /* Panel */
+  .ov-panel h2 { font:600 18px 'Source Serif 4', Georgia, serif; margin:0 0 4px; }
+  .ov-panel h3 { font:600 12px 'JetBrains Mono', ui-monospace, monospace !important; color:#8a857c; letter-spacing:.02em; margin:22px 0 8px; }
+  .ov-panel p { margin:0 0 6px; }
+  .ov-panel ul { list-style:none; margin:0; padding:0; }
+  .ov-panel li { padding:6px 0; border-bottom:1px solid #eeeae3; }
+  .ov-panel .muted { color:#8a857c; font-size:13px; }
+  .ov-back { border:0; background:none !important; color:#5c5a55 !important; padding:0 !important; margin-bottom:10px; cursor:pointer; }
+  .tag { display:inline-block; font:600 12px 'JetBrains Mono', ui-monospace, monospace; padding:1px 8px; border-radius:999px; color:#fff; }
+  .tag.t-talking { background:#c47f00; } .tag.t-applied { background:#1f8a5a; } .tag.t-preparing { background:#5b5fc7; }
+  .tag.t-watching { background:#8a857c; } .tag.t-closed { background:#c9c3b8; color:#1a1916; }
+  .stage { font:12px 'JetBrains Mono', ui-monospace, monospace; color:#5c5a55; }
+  .app-row { display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
+  .app-row a { font-size:15px; }
+  .prep { flex:none; padding:2px 9px !important; border-radius:999px; }
+  .live-item { cursor:pointer; }
+  .live-item:hover { background:#f7f4ee; }
 
+  /* Interest dials: four pips, 0–3 */
+  .dial { display:flex; align-items:center; gap:10px; margin:6px 0; }
+  .dial-name { font:12px 'JetBrains Mono', ui-monospace, monospace; color:#5c5a55; width:7.5em; }
+  .pips { display:flex; gap:6px; }
+  .pip { width:22px; height:22px; border-radius:50%; border:2px solid #c47f00 !important; background:transparent !important; padding:0 !important; cursor:pointer; }
+  .pip.on { background:#c47f00 !important; }
+  .pip:focus-visible { outline:2px solid #1a1916; outline-offset:2px; }
+  .pip.zero { border-color:#d4cfc7 !important; width:16px; height:16px; }
+  .dial-val { font:12px 'JetBrains Mono', ui-monospace, monospace; color:#8a857c; }
+
+  /* Legend (how to read the field) */
+  .legend { display:grid; gap:8px; margin-top:6px; }
+  .legend div { display:flex; align-items:center; gap:10px; font-size:13px; color:#5c5a55; }
+  .legend svg { flex:none; }
+
+  /* List view */
+  .ov-list { position:absolute; inset:0; overflow:auto; padding:20px 24px; }
+  .ov-list h3 { font:600 12px 'JetBrains Mono', ui-monospace, monospace !important; color:#8a857c; margin:18px 0 8px; }
+  .company-chips { display:flex; flex-wrap:wrap; gap:6px; }
+
+  /* Edit dialog */
+  .ce-backdrop { position:fixed; inset:0; background:rgba(26,25,22,.45); z-index:1000; display:flex; align-items:center; justify-content:center; }
+  .ce-backdrop[hidden] { display:none; }
+  .ce-box { background:#fffefb; border-radius:12px; padding:20px 22px; width:360px; max-width:90vw; box-shadow:0 8px 32px rgba(0,0,0,.18); display:flex; flex-direction:column; gap:6px; }
+  .ce-box h3 { margin:0 0 8px; }
+  .ce-label { font:12px 'JetBrains Mono', ui-monospace, monospace; color:#5c5a55; }
+  .ce-box input[type=text], .ce-box input[type=url] { margin:0 0 6px; width:100%; box-sizing:border-box; }
+  .ce-skip { display:flex; gap:8px; align-items:center; font-size:13px; color:#5c5a55; margin-top:4px; }
+  .ce-error { color:#b42318; font-size:13px; min-height:1em; margin:4px 0 0; }
+  .ce-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:6px; }
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script>
-  const STATUS_COLORS = {
-    saved: '#3498db',
-    applied: '#2ecc71',
-    interviewing: '#f39c12',
-    offer: '#27ae60',
-    rejected: '#e74c3c',
-    preparing: '#b5642a', ready: '#0d7d7d' };
+  // ── Bands, outside in. Position is the main encoding; colour repeats it. ──
+  const BANDS = [
+    { key: 'talking',   label: 'talking',   color: '#c47f00', inner: 0.00, outer: 0.15, hint: 'interviewing, or an offer' },
+    { key: 'applied',   label: 'applied',   color: '#1f8a5a', inner: 0.15, outer: 0.33, hint: 'an application is in' },
+    { key: 'preparing', label: 'preparing', color: '#5b5fc7', inner: 0.33, outer: 0.50, hint: 'a job saved, preparing or ready' },
+    { key: 'watching',  label: 'watching',  color: '#8a857c', inner: 0.50, outer: 0.87, hint: 'no application yet' },
+    { key: 'closed',    label: 'closed',    color: '#c9c3b8', inner: 0.87, outer: 1.00, hint: 'every application was declined' },
+  ];
+  const BAND = Object.fromEntries(BANDS.map(b => [b.key, b]));
+  const STAGE_BAND = { offer: 'talking', interviewing: 'talking', applied: 'applied', ready: 'preparing', preparing: 'preparing', saved: 'preparing' };
+  const STAGE_ORDER = ['offer', 'interviewing', 'applied', 'ready', 'preparing', 'saved', 'rejected'];
+  const STAGE_LABEL = { offer: 'Offer', interviewing: 'Interviewing', applied: 'Applied', ready: 'Ready', preparing: 'Preparing', saved: 'Saved', rejected: 'Declined' };
+  const SURFACE = '#faf9f7';
+  const WEEK = 7 * 86400000;
 
-  function loadStats() {
-    Promise.all([
-      fetch('/api/jobs?per_company_limit=10').then(r => r.json()),
-      fetch('/api/pipeline').then(r => r.json()),
-      fetch('/api/companies').then(r => r.json()),
-      fetch('/api/profiles').then(r => r.json()),
-    ]).then(([jobs, pipeline, companies, profiles]) => {
-      document.getElementById('stat-jobs').textContent = jobs.total;
+  let companies = [], byId = {}, selected = null, view = 'field', sim = null, nodesSel = null, layoutKey = '';
+  const embedded = document.body.classList.contains('embedded');
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u || ''; } };
 
-      const pipelineTotal = ['saved','applied','interviewing','offer','rejected']
-        .reduce((sum, s) => sum + pipeline[s].length, 0);
-      document.getElementById('stat-pipeline').textContent = pipelineTotal;
+  // ── What each company is, from the data ───────────────────────────────────
+  function bandOf(c) {
+    const live = c.applications.filter(a => a.status !== 'rejected');
+    if (live.length) return STAGE_BAND[live.map(a => a.status).sort((a, b) => STAGE_ORDER.indexOf(a) - STAGE_ORDER.indexOf(b))[0]] || 'preparing';
+    return c.applications.length ? 'closed' : 'watching';
+  }
+  const interestOf = c => (c.score_a || 0) + (c.score_m || 0) + (c.score_p || 0);       // 0–9
+  // A live application never draws smaller than a company you're only watching.
+  const radiusOf = c => Math.max(['talking', 'applied', 'preparing'].includes(c.band) ? 7 : 0, 5 + interestOf(c) * 2.3);
+  const isFresh = c => c.fresh_matched > 0 || c.applications.some(a => a.changed && Date.now() - new Date(a.changed + 'Z') < WEEK);
+  const watched = c => c.url_status === 'verified';
 
-      document.getElementById('stat-companies').textContent = companies.length;
-      document.getElementById('stat-profiles').textContent = profiles.length;
-
-      renderPipelineSummary(pipeline);
-      renderRecentSaved(pipeline.saved);
-      renderCompanies(companies);
-    }).catch(e => console.error('Dashboard load error:', e));
+  // ── Load ──────────────────────────────────────────────────────────────────
+  async function load() {
+    const [field, jobs] = await Promise.all([
+      fetch('/api/companies/field').then(r => r.json()),
+      fetch('/api/jobs?per_company_limit=10').then(r => r.json()).catch(() => ({ total: '—' })),
+    ]);
+    companies = field.companies;
+    byId = Object.fromEntries(companies.map(c => [c.id, c]));
+    companies.forEach(c => { c.band = bandOf(c); });
+    const active = companies.filter(c => !c.is_skipped);
+    document.getElementById('n-jobs').textContent = jobs.total ?? '—';
+    document.getElementById('n-pipeline').textContent = companies.reduce((n, c) => n + c.applications.length, 0);
+    document.getElementById('n-companies').textContent = active.length;
+    document.getElementById('n-profiles').textContent = field.profiles;
+    document.getElementById('find-list').innerHTML = active.map(c => `<option value="${esc(c.name)}">`).join('');
+    draw();
+    renderList();
+    renderPanel();
   }
 
-  function renderPipelineSummary(data) {
-    const statuses = ['saved', 'preparing', 'ready', 'applied', 'interviewing', 'offer', 'rejected'];
-    const el = document.getElementById('pipeline-summary');
+  // ── The field ─────────────────────────────────────────────────────────────
+  function draw() {
+    const box = document.getElementById('field');
+    const svg = d3.select('#field-svg');
+    const W = box.clientWidth, H = box.clientHeight;
+    if (!W || !H) return;
+    const cx = W / 2, cy = H / 2 + 8, R = Math.min(W, H) / 2 - 28;
+    const data = companies.filter(c => !c.is_skipped);
+    document.getElementById('field-empty').hidden = data.length > 0;
+    document.getElementById('field-empty').textContent = 'No companies yet. Add some in Intake or Companies.';
 
-    const hasAny = statuses.some(s => data[s].length > 0);
-    if (!hasAny) {
-      el.innerHTML = '<p class="text-muted">No jobs in pipeline yet. <a href="/search">Search for jobs</a> to get started.</p>';
-      return;
+    // Re-layout from scratch only when the size changes; otherwise nodes keep their places.
+    const key = `${W}x${H}`;
+    const fresh = key !== layoutKey;
+    layoutKey = key;
+    if (fresh) svg.selectAll('*:not(title)').remove();
+
+    let g = svg.select('g.field');
+    if (g.empty()) {
+      g = svg.append('g').attr('class', 'field');
+      const bands = g.append('g').attr('class', 'bands');
+      // Live bands get a faint wash of their colour, the outer ones stay paper.
+      BANDS.slice().reverse().forEach(b => {
+        bands.append('circle').attr('class', 'band-fill').attr('cx', cx).attr('cy', cy).attr('r', b.outer * R)
+          .attr('fill', ['talking', 'applied', 'preparing'].includes(b.key) ? d3.color(b.color).copy({ opacity: .06 }) : SURFACE);
+      });
+      BANDS.forEach(b => bands.append('circle').attr('class', 'band' + (b.outer < .6 ? ' is-live' : '')).attr('cx', cx).attr('cy', cy).attr('r', b.outer * R));
+      g.append('g').attr('class', 'band-labels');
+      g.append('g').attr('class', 'nodes');
+      g.append('g').attr('class', 'labels');
     }
+    // Band labels with counts, set along the top of each band.
+    const counts = d3.rollup(data, v => v.length, d => d.band);
+    g.select('.band-labels').selectAll('g').data(BANDS, d => d.key).join(enter => {
+      const t = enter.append('g');
+      t.append('text').attr('class', 'band-label').attr('text-anchor', 'middle');
+      t.append('text').attr('class', 'band-count').attr('text-anchor', 'middle');
+      return t;
+    }).each(function (b) {
+      const y = b.key === 'talking' ? cy - b.outer * R + 14 : cy - (b.inner * R + b.outer * R) / 2 - 2;
+      const yy = b.key === 'talking' ? cy - b.outer * R + 28 : y + 14;
+      d3.select(this).select('.band-label').attr('x', cx).attr('y', b.key === 'closed' ? cy - b.outer * R + 16 : y).text(b.label);
+      d3.select(this).select('.band-count').attr('x', cx).attr('y', b.key === 'closed' ? cy - b.outer * R + 30 : yy).text(counts.get(b.key) || 0);
+    });
 
-    const rows = statuses.map(status => {
-      const jobs = data[status];
-      if (jobs.length === 0) return '';
-      const recent = jobs.slice(0, 2).map(j =>
-        `<div class="pipeline-summary-item">
-          <span class="pipeline-dot" style="background:${STATUS_COLORS[status]}"></span>
-          <span class="pipeline-item-text"><strong>${j.title}</strong> — ${j.company}</span>
-        </div>`
-      ).join('');
-      const more = jobs.length > 2
-        ? `<div class="pipeline-more"><a href="/pipeline">+${jobs.length - 2} more</a></div>`
-        : '';
-      return `<div class="pipeline-stage">
-        <div class="pipeline-stage-header">
-          <span class="pipeline-badge" style="background:${STATUS_COLORS[status]}">${status.charAt(0).toUpperCase()+status.slice(1)}</span>
-          <span class="pipeline-count">${jobs.length}</span>
-        </div>
-        ${recent}${more}
-      </div>`;
-    }).join('');
-
-    el.innerHTML = rows;
-  }
-
-  function renderRecentSaved(saved) {
-    const el = document.getElementById('recent-jobs');
-    if (!saved || saved.length === 0) {
-      el.innerHTML = '<p class="text-muted">No saved jobs yet. <a href="/search">Browse listings</a> to save one.</p>';
-      return;
-    }
-    const rows = saved.slice(0, 6).map(j => {
-      let age = '';
-      if (j.saved_date) {
-        const days = Math.floor((Date.now() - new Date(j.saved_date)) / 86400000);
-        age = days > 0 ? `${days}d ago` : 'Today';
+    // Nodes: one per company, kept across redraws so changes animate.
+    const old = new Map((sim ? sim.nodes() : []).map(n => [n.id, n]));
+    const nodes = data.map(c => {
+      const n = old.get(c.id) || { id: c.id };
+      if (n.x == null || fresh) {
+        // A stable starting angle per company, so the field looks the same each visit.
+        const a = ((c.id * 2654435761) % 360) * Math.PI / 180;
+        const b = BAND[c.band], r = ((b.inner + b.outer) / 2) * R;
+        n.x = cx + r * Math.cos(a); n.y = cy + r * Math.sin(a);
       }
-      return `<div class="recent-job-row">
-        <div class="recent-job-info">
-          <a href="${j.url}" target="_blank" class="recent-job-title">${j.title}</a>
-          <span class="recent-job-meta">${j.company}${j.location ? ' · ' + j.location : ''}</span>
-        </div>
-        <span class="recent-job-age text-muted">${age}</span>
-      </div>`;
-    }).join('');
-    el.innerHTML = rows;
+      n.c = c; n.r = radiusOf(c);
+      return n;
+    });
+
+    nodesSel = g.select('.nodes').selectAll('g.node').data(nodes, d => d.id).join(enter => {
+      const n = enter.append('g').attr('class', 'node').attr('tabindex', -1);
+      n.append('circle').attr('class', 'pulse');
+      n.append('circle').attr('class', 'dot');
+      n.append('circle').attr('class', 'dot-hit');
+      return n;
+    });
+    nodesSel.select('.dot')
+      .attr('fill', d => watched(d.c) ? BAND[d.c.band].color : SURFACE)
+      .attr('stroke', d => watched(d.c) ? SURFACE : BAND[d.c.band].color)
+      .attr('stroke-width', d => watched(d.c) ? 2 : 2)
+      .attr('r', d => d.r);
+    nodesSel.select('.dot-hit').attr('r', d => Math.max(d.r + 4, 10));
+    nodesSel.select('.pulse').attr('r', d => d.r).style('display', d => isFresh(d.c) ? null : 'none');
+    nodesSel.classed('is-sel', d => d.id === selected)
+      .on('mousemove', (e, d) => showTip(e, d.c))
+      .on('mouseleave', hideTip)
+      .on('click', (e, d) => select(d.id));
+
+    // Names: only where they help (live bands, and the companies you care most about).
+    const labelled = new Set(nodes.filter(n => ['talking', 'applied', 'preparing'].includes(n.c.band) || interestOf(n.c) >= 4 || n.id === selected).map(n => n.id));
+    const labels = g.select('.labels').selectAll('text').data(nodes.filter(n => labelled.has(n.id)), d => d.id)
+      .join('text').attr('class', 'node-label').text(d => d.c.name);
+
+    // Physics: pull each dot to its own depth in its band (so a crowded band
+    // fills its area instead of forming a single ring), keep it inside the
+    // band, keep the top wedge clear for the band labels, don't overlap.
+    const depth = n => { const b = BAND[n.c.band]; const h = ((n.id * 40503) % 1000) / 1000;
+      return (b.key === 'talking' ? b.outer * .55 : b.inner + (b.outer - b.inner) * (.2 + .6 * h)) * R; };
+    const TOP = -Math.PI / 2;
+    if (sim) sim.stop();
+    sim = d3.forceSimulation(nodes)
+      .force('radial', d3.forceRadial(depth, cx, cy).strength(.18))
+      .force('collide', d3.forceCollide(d => d.r + 2.5).iterations(2))
+      .alpha(fresh ? 1 : .5).alphaDecay(.03)
+      .on('tick', () => {
+        for (const n of nodes) {
+          const b = BAND[n.c.band];
+          let dx = n.x - cx, dy = n.y - cy, d = Math.hypot(dx, dy) || 1;
+          // stay within the band
+          const lo = b.inner * R + n.r + 2, hi = b.outer * R - n.r - 2;
+          const t = Math.max(lo, Math.min(hi > lo ? hi : lo, d));
+          // keep out of the label wedge at the top (wider near the centre, where labels take more angle)
+          let a = Math.atan2(dy, dx);
+          const half = Math.atan((44 + n.r) / t);
+          let off = Math.atan2(Math.sin(a - TOP), Math.cos(a - TOP));
+          if (Math.abs(off) < half) a = TOP + (off < 0 ? -half : half);
+          n.x = cx + Math.cos(a) * t; n.y = cy + Math.sin(a) * t;
+        }
+        nodesSel.attr('transform', d => `translate(${d.x},${d.y})`);
+        // names sit on the outward side of the dot, away from the centre's band labels
+        labels.attr('text-anchor', d => d.x < cx ? 'end' : 'start')
+          .attr('x', d => d.x < cx ? d.x - d.r - 5 : d.x + d.r + 5).attr('y', d => d.y + 4);
+      });
+    applyFind();
   }
 
-  const companiesData = {};
+  // ── Hover ─────────────────────────────────────────────────────────────────
+  function showTip(e, c) {
+    const tip = document.getElementById('tip'), box = document.getElementById('field').getBoundingClientRect();
+    const live = c.applications.filter(a => a.status !== 'rejected');
+    tip.innerHTML = `<b>${esc(c.name)}</b>
+      <span class="k">${BAND[c.band].label}</span> · ${esc(BAND[c.band].hint)}<br>
+      <span class="k">interest</span> ${interestOf(c)} of 9 <span class="k">(A ${c.score_a ?? '–'} · M ${c.score_m ?? '–'} · P ${c.score_p})</span><br>
+      <span class="k">postings</span> ${c.open_jobs} open${c.matched_jobs ? `, ${c.matched_jobs} match your profiles` : ''}<br>
+      ${live.length ? live.slice(0, 3).map(a => `<span class="k">${STAGE_LABEL[a.status]}</span> ${esc(a.title)}`).join('<br>') + '<br>' : ''}
+      <span class="k">career page</span> ${watched(c) ? 'verified, scraped' : 'not verified yet'}`;
+    tip.hidden = false;
+    const x = e.clientX - box.left, y = e.clientY - box.top;
+    tip.style.left = Math.min(x + 16, box.width - 290) + 'px';
+    tip.style.top = Math.min(y + 16, box.height - tip.offsetHeight - 8) + 'px';
+  }
+  function hideTip() { document.getElementById('tip').hidden = true; }
 
-  function renderCompanies(companies) {
-    const el = document.getElementById('companies-list');
-    if (companies.length === 0) {
-      el.innerHTML = '<p class="text-muted">No companies yet. <a href="/companies/manage">Add one</a>.</p>';
+  // ── Select and the panel ──────────────────────────────────────────────────
+  function select(id) {
+    selected = id;
+    if (nodesSel) nodesSel.classed('is-sel', d => d.id === selected);
+    renderPanel();
+  }
+
+  function pips(c, key) {
+    const v = c[key] ?? 0;
+    return `<div class="pips" role="radiogroup" aria-label="${key === 'score_m' ? 'Motivation' : 'Advocacy'}">
+      <button type="button" class="pip zero" data-score="${key}" data-v="0" aria-label="0" title="0"></button>
+      ${[1, 2, 3].map(i => `<button type="button" class="pip${v >= i ? ' on' : ''}" data-score="${key}" data-v="${i}" aria-label="${i}" title="${i}"></button>`).join('')}
+    </div>`;
+  }
+
+  function renderPanel() {
+    const panel = document.getElementById('panel');
+    const c = byId[selected];
+    if (!c) { panel.innerHTML = overviewPanel(); return; }
+    const apps = c.applications.slice().sort((a, b) => STAGE_ORDER.indexOf(a.status) - STAGE_ORDER.indexOf(b.status));
+    panel.innerHTML = `
+      <button type="button" class="ov-back" data-act="back">← All companies</button>
+      <h2>${esc(c.name)}</h2>
+      <p><span class="tag t-${c.band}">${BAND[c.band].label}</span> <span class="muted">${esc(BAND[c.band].hint)}</span></p>
+      ${c.website ? `<p class="muted"><a href="${esc(c.website)}" target="_blank" rel="noopener">${esc(host(c.website))} ↗</a></p>` : ''}
+
+      <h3>YOUR INTEREST · ${interestOf(c)} OF 9</h3>
+      <div class="dial"><span class="dial-name">Motivation</span>${pips(c, 'score_m')}</div>
+      <div class="dial"><span class="dial-name">Advocacy</span>${pips(c, 'score_a')}</div>
+      <div class="dial"><span class="dial-name">Postings</span><span class="dial-val">${c.score_p} of 3 · ${c.matched_jobs} matching your profiles${c.fresh_matched ? `, ${c.fresh_matched} new` : ''}</span></div>
+      <p class="muted">Motivation is how much you want to work there; advocacy, who you know inside. Postings count by themselves.</p>
+
+      <h3>APPLICATIONS</h3>
+      ${apps.length ? `<ul>${apps.map(a => `<li><div class="app-row">
+          <span><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a><br><span class="stage">${STAGE_LABEL[a.status] || a.status}${a.applied_date ? ` · applied ${a.applied_date.slice(0, 10)}` : ''}</span></span>
+          ${a.status !== 'rejected' && embedded ? `<button type="button" class="prep" data-prepare="${a.id}">Prepare →</button>` : ''}
+        </div></li>`).join('')}</ul>` : `<p class="muted">None yet. <a href="/search">Find a posting →</a></p>`}
+
+      <h3>CAREER PAGE</h3>
+      <p>${c.career_url ? `<a href="${esc(c.career_url)}" target="_blank" rel="noopener">${esc(host(c.career_url))} ↗</a> · ` : ''}<span class="muted">${watched(c) ? 'verified; Search scrapes it' : c.career_url ? 'waiting for you to verify it' : 'none yet'}</span></p>
+      <p class="muted">${c.open_jobs} open postings this week. <a href="/companies/manage">Review in Companies →</a></p>
+
+      <p style="margin-top:18px;display:flex;gap:8px;">
+        <button type="button" class="secondary" data-act="edit">Edit</button>
+        <button type="button" class="secondary" data-act="skip">${c.is_skipped ? 'Unskip' : 'Skip'}</button>
+      </p>`;
+  }
+
+  function overviewPanel() {
+    const active = companies.filter(c => !c.is_skipped);
+    const live = [];
+    active.forEach(c => c.applications.filter(a => a.status !== 'rejected').forEach(a => live.push({ a, c })));
+    live.sort((x, y) => STAGE_ORDER.indexOf(x.a.status) - STAGE_ORDER.indexOf(y.a.status) || (y.a.changed || '').localeCompare(x.a.changed || ''));
+    const saved = live.filter(x => x.a.status === 'saved').slice(0, 6);
+    const going = live.filter(x => x.a.status !== 'saved');
+    const top = active.slice().sort((a, b) => interestOf(b) - interestOf(a)).filter(c => interestOf(c) > 0).slice(0, 5);
+    const item = ({ a, c }) => `<li class="live-item" data-select="${c.id}"><span class="stage">${STAGE_LABEL[a.status]}</span><br><b>${esc(a.title)}</b> <span class="muted">· ${esc(c.name)}</span></li>`;
+    return `
+      <h2>Your field</h2>
+      <p class="muted">${active.length} companies. Closer to the middle is further along; bigger is more interest. Click a dot to turn its interest up.</p>
+      <h3>LIVE APPLICATIONS · ${going.length}</h3>
+      ${going.length ? `<ul>${going.map(item).join('')}</ul>` : '<p class="muted">Nothing in flight.</p>'}
+      <h3>RECENTLY SAVED · ${saved.length}</h3>
+      ${saved.length ? `<ul>${saved.map(item).join('')}</ul>` : '<p class="muted">No saved jobs. <a href="/search">Browse postings →</a></p>'}
+      ${top.length ? `<h3>MOST INTEREST</h3><ul>${top.map(c => `<li class="live-item" data-select="${c.id}"><b>${esc(c.name)}</b> <span class="muted">· ${interestOf(c)} of 9 · ${BAND[c.band].label}</span></li>`).join('')}</ul>` : ''}
+      <h3>HOW TO READ IT</h3>
+      <div class="legend">
+        <div><svg width="44" height="20"><circle cx="8" cy="10" r="5" fill="#1f8a5a"/><circle cx="30" cy="10" r="9" fill="#1f8a5a"/></svg>Size: your interest, 0 to 9</div>
+        <div><svg width="44" height="20"><circle cx="10" cy="10" r="7" fill="#8a857c"/><circle cx="32" cy="10" r="6" fill="${SURFACE}" stroke="#8a857c" stroke-width="2"/></svg>Filled: career page verified and scraped. Hollow: not yet</div>
+        <div><svg width="44" height="20"><circle cx="22" cy="10" r="6" fill="none" stroke="#c47f00" stroke-width="2"/><circle cx="22" cy="10" r="9" fill="none" stroke="#c47f00" stroke-opacity=".4"/></svg>Pulse: new this week (a stage moved, or fresh matching postings)</div>
+        ${BANDS.map(b => `<div><span class="tag t-${b.key}">${b.label}</span>${esc(b.hint)}</div>`).join('')}
+      </div>`;
+  }
+
+  // ── List view: the same companies, grouped by band ────────────────────────
+  function renderList() {
+    const el = document.getElementById('list');
+    const groups = BANDS.map(b => [b, companies.filter(c => !c.is_skipped && c.band === b.key)]).filter(([, cs]) => cs.length);
+    const skipped = companies.filter(c => c.is_skipped);
+    const chips = cs => `<div class="company-chips">${cs.sort((a, b) => a.name.localeCompare(b.name)).map(c =>
+      `<button type="button" class="company-chip${c.is_skipped ? ' skipped' : ''}" data-select="${c.id}">${esc(c.name)}</button>`).join('')}</div>`;
+    el.innerHTML = groups.map(([b, cs]) => `<h3>${b.label.toUpperCase()} · ${cs.length}</h3>${chips(cs)}`).join('') +
+      (skipped.length ? `<h3>SKIPPED · ${skipped.length}</h3>${chips(skipped)}` : '');
+  }
+
+  // ── Find ──────────────────────────────────────────────────────────────────
+  function applyFind() {
+    const q = document.getElementById('find').value.trim().toLowerCase();
+    if (nodesSel) nodesSel.classed('is-dim', d => q && !d.c.name.toLowerCase().includes(q));
+  }
+  document.getElementById('find').addEventListener('input', applyFind);
+  document.getElementById('find').addEventListener('change', e => {
+    const c = companies.find(c => c.name.toLowerCase() === e.target.value.trim().toLowerCase());
+    if (c) { select(c.id); }
+  });
+
+  // ── Clicks ────────────────────────────────────────────────────────────────
+  document.addEventListener('click', async e => {
+    const t = e.target.closest('[data-view], [data-select], [data-score], [data-act], [data-prepare]');
+    if (!t) return;
+    if (t.dataset.view) {
+      view = t.dataset.view;
+      document.querySelectorAll('[data-view]').forEach(b => { b.classList.toggle('is-on', b === t); b.setAttribute('aria-selected', String(b === t)); });
+      document.getElementById('field').hidden = view !== 'field';
+      document.getElementById('list').hidden = view !== 'list';
+      if (view === 'field') { layoutKey = ''; draw(); }
       return;
     }
-    companies.sort((a, b) => a.name.localeCompare(b.name));
-    companies.forEach(c => { companiesData[c.id] = c; });
-    const chips = companies.map(c =>
-      `<button class="company-chip${c.is_skipped ? ' skipped' : ''}" onclick="openCompanyEdit(${c.id})" title="Click to edit">${escH(c.name)}</button>`
-    ).join('');
-    el.innerHTML = `<div class="company-chips">${chips}</div>`;
-  }
+    if (t.dataset.select) { select(Number(t.dataset.select)); return; }
+    if (t.dataset.prepare) { parent.postMessage({ source: 'search', action: 'prepare', pipelineId: Number(t.dataset.prepare) }, '*'); return; }
+    const c = byId[selected];
+    if (t.dataset.score && c) {
+      const key = t.dataset.score, v = Number(t.dataset.v);
+      const body = {}; body[key] = v;
+      const r = await fetch(`/api/companies/${c.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (r.ok) { c[key] = v; draw(); renderPanel(); }   // the dot grows (or shrinks) in place
+      return;
+    }
+    if (t.dataset.act === 'back') { select(null); return; }
+    if (t.dataset.act === 'edit' && c) { openCompanyEdit(c.id); return; }
+    if (t.dataset.act === 'skip' && c) {
+      const r = await fetch(`/api/companies/${c.id}/skip`, { method: 'POST' });
+      if (r.ok) { c.is_skipped = (await r.json()).is_skipped; draw(); renderList(); renderPanel(); }
+    }
+  });
+  document.getElementById('field').addEventListener('click', e => { if (e.target.id === 'field-svg' || e.target.classList.contains('band-fill')) select(null); });
 
-  function escH(s) {
-    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
+  // ── Edit dialog (kept from the old dashboard) ─────────────────────────────
   function openCompanyEdit(id) {
-    const c = companiesData[id];
-    if (!c) return;
+    const c = byId[id]; if (!c) return;
     document.getElementById('ce-id').value = id;
     document.getElementById('ce-name').value = c.name || '';
     document.getElementById('ce-url').value = c.career_url || '';
-    const skipped = !!c.is_skipped;
-    document.getElementById('ce-skip').checked = skipped;
-    document.getElementById('ce-skip-label').textContent = skipped ? 'Skipped' : 'Active';
-    document.getElementById('ce-track').style.background = skipped ? '#f39c12' : '#ccc';
-    document.getElementById('ce-thumb').style.transform = skipped ? 'translateX(18px)' : 'none';
+    document.getElementById('ce-skip').checked = !!c.is_skipped;
     document.getElementById('ce-error').textContent = '';
-    document.getElementById('company-edit-modal').style.display = 'flex';
+    document.getElementById('company-edit-modal').hidden = false;
     document.getElementById('ce-name').focus();
   }
-
-  function closeCompanyEdit() {
-    document.getElementById('company-edit-modal').style.display = 'none';
-  }
-
+  function closeCompanyEdit() { document.getElementById('company-edit-modal').hidden = true; }
   async function saveCompanyEdit() {
-    const id = parseInt(document.getElementById('ce-id').value);
-    const name = document.getElementById('ce-name').value.trim();
-    const career_url = document.getElementById('ce-url').value.trim();
-    const skipWanted = document.getElementById('ce-skip').checked;
-    const errEl = document.getElementById('ce-error');
-    if (!name) { errEl.textContent = 'Name is required.'; return; }
-
-    const c = companiesData[id];
-    errEl.textContent = '';
-
+    const id = Number(document.getElementById('ce-id').value), c = byId[id];
+    const name = document.getElementById('ce-name').value.trim(), career_url = document.getElementById('ce-url').value.trim();
+    const skip = document.getElementById('ce-skip').checked, err = document.getElementById('ce-error');
+    if (!name) { err.textContent = 'Name is required.'; return; }
     try {
-      // Update name/url if changed
       if (name !== c.name || career_url !== (c.career_url || '')) {
-        const r = await fetch(`/api/companies/${id}`, {
-          method: 'PUT',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({name, career_url})
-        });
-        const data = await r.json();
-        if (!r.ok) { errEl.textContent = data.detail || 'Save failed'; return; }
-        companiesData[id] = {...companiesData[id], ...data};
+        const r = await fetch(`/api/companies/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, career_url }) });
+        const d = await r.json(); if (!r.ok) { err.textContent = d.detail || 'Save failed'; return; }
+        Object.assign(c, { name: d.name, career_url: d.career_url, url_status: d.url_status });
       }
-
-      // Toggle skip if changed
-      if (skipWanted !== !!c.is_skipped) {
-        const r2 = await fetch(`/api/companies/${id}/skip`, {method: 'POST'});
-        const data2 = await r2.json();
-        if (!r2.ok) { errEl.textContent = data2.detail || 'Skip toggle failed'; return; }
-        companiesData[id] = {...companiesData[id], ...data2};
+      if (skip !== !!c.is_skipped) {
+        const r = await fetch(`/api/companies/${id}/skip`, { method: 'POST' });
+        const d = await r.json(); if (!r.ok) { err.textContent = d.detail || 'Skip failed'; return; }
+        c.is_skipped = d.is_skipped;
       }
-
-      // Refresh chip
-      const btn = document.querySelector(`.company-chip[onclick="openCompanyEdit(${id})"]`);
-      if (btn) {
-        btn.textContent = companiesData[id].name;
-        btn.className = 'company-chip' + (companiesData[id].is_skipped ? ' skipped' : '');
-      }
-      closeCompanyEdit();
-    } catch(e) {
-      errEl.textContent = 'Error: ' + e.message;
-    }
+      closeCompanyEdit(); draw(); renderList(); renderPanel();
+    } catch (e) { err.textContent = 'Error: ' + e.message; }
   }
+  document.getElementById('company-edit-modal').addEventListener('click', e => { if (e.target.id === 'company-edit-modal') closeCompanyEdit(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeCompanyEdit(); hideTip(); } });
 
-  document.addEventListener('DOMContentLoaded', () => {
-    loadStats();
-
-    document.getElementById('ce-skip').addEventListener('change', function() {
-      document.getElementById('ce-skip-label').textContent = this.checked ? 'Skipped' : 'Active';
-      document.getElementById('ce-track').style.background = this.checked ? '#f39c12' : '#ccc';
-      document.getElementById('ce-thumb').style.transform = this.checked ? 'translateX(18px)' : 'none';
-    });
-
-    document.getElementById('company-edit-modal').addEventListener('click', function(e) {
-      if (e.target === this) closeCompanyEdit();
-    });
-
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') closeCompanyEdit();
-    });
-  });
+  let resizeT;
+  window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (view === 'field') draw(); }, 150); });
+  document.addEventListener('DOMContentLoaded', load);
 </script>
 {% endblock %}

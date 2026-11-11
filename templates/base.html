@@ -31,8 +31,14 @@
   </header>
   {% endif %}
 
+  {#- A page's own menu bar, full width under the header (or, in the studio,
+      under the studio's two toolbars, as a third). -#}
+  {% block bar %}{% endblock %}
+
+  {% block wide %}
   <div class="container">
     {% block content %}{% endblock %}
   </div>
+  {% endblock %}
 </body>
 </html>
