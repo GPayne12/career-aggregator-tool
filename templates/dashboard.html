@@ -17,11 +17,6 @@
   <a class="bar3-item" href="/pipeline"><b id="n-pipeline">—</b> in pipeline</a>
   <a class="bar3-item" href="/companies/manage"><b id="n-companies">—</b> companies</a>
   <a class="bar3-item" href="/profiles/manage"><b id="n-profiles">—</b> keyword profiles</a>
-  <span class="bar3-sep" aria-hidden="true"></span>
-  {#- What the old side panel listed, one menu each; picking a company opens it. -#}
-  <div class="bar3-menu"><button type="button" class="bar3-item" data-menu="live" aria-expanded="false"><b id="n-live">—</b> live ▾</button><div class="pop" id="pop-live" hidden></div></div>
-  <div class="bar3-menu"><button type="button" class="bar3-item" data-menu="saved" aria-expanded="false"><b id="n-saved">—</b> saved ▾</button><div class="pop" id="pop-saved" hidden></div></div>
-  <div class="bar3-menu"><button type="button" class="bar3-item" data-menu="top" aria-expanded="false">most interest ▾</button><div class="pop" id="pop-top" hidden></div></div>
   <span class="bar3-spacer"></span>
   <label class="bar3-find"><span class="sr">Find a company</span>
     <input id="find" type="search" placeholder="Find a company" autocomplete="off" list="find-list"><datalist id="find-list"></datalist></label>
@@ -37,7 +32,8 @@
   <section class="ov-main" aria-label="Companies">
     <div class="ov-field" id="field">
       <svg id="field-svg" role="img" aria-labelledby="field-title"><title id="field-title">Companies by how far along each is, sized by your interest</title></svg>
-      <div class="ov-key" id="key" aria-hidden="true"></div>
+      <div class="ov-key ov-key--left" id="key-left" aria-hidden="true"></div>
+      <div class="ov-key ov-key--right" id="key-right" aria-hidden="true"></div>
       <div class="ov-tip" id="tip" hidden></div>
       <p class="ov-empty" id="field-empty" hidden></p>
     </div>
@@ -81,16 +77,6 @@
                      border:1px solid #d4cfc7; border-radius:999px; background:#fffefb; }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 
-  .bar3-sep { width:1px; height:20px; background:#d4cfc7; margin:0 6px; }
-  .bar3-menu { position:relative; }
-  .pop { position:absolute; top:calc(100% + 6px); left:0; z-index:20; width:340px; max-height:60vh; overflow:auto; padding:6px;
-         background:#fffefb; border:1px solid #d4cfc7; border-radius:10px; box-shadow:0 10px 30px rgba(26,25,22,.14); }
-  .pop ul { list-style:none; margin:0; padding:0; }
-  .pop li { padding:7px 10px; border-radius:6px; cursor:pointer; }
-  .pop li:hover { background:#f7f4ee; }
-  .pop .stage { display:block; }
-  .pop .muted { color:#8a857c; font-size:13px; }
-  .pop p { margin:6px 10px; color:#8a857c; font-size:13px; }
 
   /* ── Layout: the field fills the page; the panel opens over its edge ── */
   .ov { position:relative; height:calc(100vh - 44px); }
@@ -103,17 +89,18 @@
   .ov-panel[hidden] { display:none; }
 
   /* The key sits in the field's corner, behind the dots. */
-  .ov-key { position:absolute; left:20px; bottom:16px; z-index:0; pointer-events:none; opacity:.62; display:grid; gap:6px; max-width:280px; }
-  .ov-key div { display:flex; align-items:center; gap:10px; font-size:13px; color:#5c5a55; }
+  .ov-key { position:absolute; bottom:12px; z-index:0; pointer-events:none; opacity:.5; display:grid; gap:0; }
+  .ov-key--left { left:20px; }
+  .ov-key--right { right:20px; justify-items:end; }
+  .ov-key div { display:flex; align-items:center; gap:8px; font-size:13px; line-height:1.25; color:#5c5a55; white-space:nowrap; }
+  .ov-key--right div { flex-direction:row-reverse; }
   .ov-key svg { flex:none; }
   .ov-field svg#field-svg { position:relative; z-index:1; }
 
   /* Bands and their labels */
-  .band { fill:none; stroke:#d4cfc7; stroke-width:1; }
-  .band.is-live { stroke-dasharray:2 4; }
+  .band { fill:none; stroke:#e4dfd6; stroke-width:.75; }
+  .band.is-live { stroke:#ddd8ce; stroke-dasharray:1 5; }
   .band-fill { stroke:none; }
-  .band-label { font:600 12px 'JetBrains Mono', ui-monospace, monospace; fill:#5c5a55; letter-spacing:.02em; }
-  .band-count { font:12px 'JetBrains Mono', ui-monospace, monospace; fill:#8a857c; }
 
   /* Dots */
   .dot { cursor:pointer; transition: r .5s cubic-bezier(.2,.8,.2,1); }
@@ -232,7 +219,6 @@
     document.getElementById('find-list').innerHTML = active.map(c => `<option value="${esc(c.name)}">`).join('');
     draw();
     renderList();
-    renderMenus();
     renderKey();
     renderPanel();
   }
@@ -270,23 +256,8 @@
       });
       BANDS.forEach(b => bands.append('ellipse').attr('class', 'band' + (b.outer < .6 ? ' is-live' : ''))
         .attr('cx', cx).attr('cy', cy).attr('rx', b.outer * R * sx).attr('ry', b.outer * R));
-      g.append('g').attr('class', 'band-labels');
       g.append('g').attr('class', 'nodes');
     }
-    // Band labels with counts, set along the top of each band.
-    const counts = d3.rollup(data, v => v.length, d => d.band);
-    g.select('.band-labels').selectAll('g').data(BANDS, d => d.key).join(enter => {
-      const t = enter.append('g');
-      t.append('text').attr('class', 'band-label').attr('text-anchor', 'middle');
-      t.append('text').attr('class', 'band-count').attr('text-anchor', 'middle');
-      return t;
-    }).each(function (b) {
-      const y = b.key === 'talking' ? cy - b.outer * R + 14 : cy - (b.inner * R + b.outer * R) / 2 - 2;
-      const yy = b.key === 'talking' ? cy - b.outer * R + 28 : y + 14;
-      d3.select(this).select('.band-label').attr('x', cx).attr('y', b.key === 'closed' ? cy - b.outer * R + 16 : y).text(b.label);
-      d3.select(this).select('.band-count').attr('x', cx).attr('y', b.key === 'closed' ? cy - b.outer * R + 30 : yy).text(counts.get(b.key) || 0);
-    });
-
     // Nodes: one per company, kept across redraws so changes animate.
     const old = new Map((sim ? sim.nodes() : []).map(n => [n.id, n]));
     const nodes = data.map(c => {
@@ -324,10 +295,9 @@
 
     // Physics: pull each dot to its own depth in its band (so a crowded band
     // fills its area instead of forming a single ring), keep it inside the
-    // band, keep the top wedge clear for the band labels, don't overlap.
+    // band, don't overlap.
     const depth = n => { const b = BAND[n.c.band]; const h = ((n.id * 40503) % 1000) / 1000;
       return (b.key === 'talking' ? b.outer * .55 : b.inner + (b.outer - b.inner) * (.2 + .6 * h)) * R; };
-    const TOP = -Math.PI / 2;
     if (sim) sim.stop();
     sim = d3.forceSimulation(nodes)
       .force('radial', d3.forceRadial(depth, cx, cy).strength(.18))
@@ -340,12 +310,7 @@
           // stay within the band
           const lo = b.inner * R + n.r + 2, hi = b.outer * R - n.r - 2;
           const t = Math.max(lo, Math.min(hi > lo ? hi : lo, d));
-          // keep out of the label wedge at the top (wider near the centre, where labels take more angle)
-          let a = Math.atan2(dy, dx);
-          const half = Math.atan((44 + n.r) / t);
-          let off = Math.atan2(Math.sin(a - TOP), Math.cos(a - TOP));
-          if (Math.abs(off) < half) a = TOP + (off < 0 ? -half : half);
-          n.x = cx + Math.cos(a) * t; n.y = cy + Math.sin(a) * t;
+          n.x = cx + dx / d * t; n.y = cy + dy / d * t;
         }
         nodesSel.attr('transform', d => `translate(${X(d.x)},${d.y})`);
       });
@@ -418,36 +383,15 @@
       </p>`;
   }
 
-  // ── The bar's menus: what the old side panel listed ──────────────────────
-  function renderMenus() {
-    const active = companies.filter(c => !c.is_skipped);
-    const live = [];
-    active.forEach(c => c.applications.filter(a => a.status !== 'rejected').forEach(a => live.push({ a, c })));
-    live.sort((x, y) => STAGE_ORDER.indexOf(x.a.status) - STAGE_ORDER.indexOf(y.a.status) || (y.a.changed || '').localeCompare(x.a.changed || ''));
-    const saved = live.filter(x => x.a.status === 'saved');
-    const going = live.filter(x => x.a.status !== 'saved');
-    const top = active.slice().sort((a, b) => interestOf(b) - interestOf(a) || a.name.localeCompare(b.name)).filter(c => interestOf(c) > 0).slice(0, 12);
-    const item = ({ a, c }) => `<li data-select="${c.id}"><span class="stage">${STAGE_LABEL[a.status]}</span><b>${esc(a.title)}</b> <span class="muted">· ${esc(c.name)}</span></li>`;
-    document.getElementById('n-live').textContent = going.length;
-    document.getElementById('n-saved').textContent = saved.length;
-    document.getElementById('pop-live').innerHTML = going.length ? `<ul>${going.map(item).join('')}</ul>` : '<p>Nothing in flight.</p>';
-    document.getElementById('pop-saved').innerHTML = saved.length ? `<ul>${saved.map(item).join('')}</ul>` : '<p>No saved jobs. <a href="/search">Browse postings →</a></p>';
-    document.getElementById('pop-top').innerHTML = top.length
-      ? `<ul>${top.map(c => `<li data-select="${c.id}"><b>${esc(c.name)}</b> <span class="muted">· ${interestOf(c)} of 9 · ${BAND[c.band].label}</span></li>`).join('')}</ul>`
-      : '<p>No interest set yet. Click a dot and turn it up.</p>';
-  }
-  function closeMenus() {
-    document.querySelectorAll('.pop').forEach(p => { p.hidden = true; });
-    document.querySelectorAll('[data-menu]').forEach(b => b.setAttribute('aria-expanded', 'false'));
-  }
-
   // ── The key, in the field's corner behind the dots ────────────────────────
   function renderKey() {
-    document.getElementById('key').innerHTML = `
-      <div><svg width="44" height="20"><circle cx="8" cy="10" r="5" fill="#8a857c"/><circle cx="30" cy="10" r="9" fill="#8a857c"/></svg>Size: your interest, 0 to 9</div>
-      <div><svg width="44" height="20"><circle cx="10" cy="10" r="7" fill="#8a857c"/><circle cx="32" cy="10" r="6" fill="${SURFACE}" stroke="#8a857c" stroke-width="2"/></svg>Filled: career page verified and scraped</div>
-      <div><svg width="44" height="20"><circle cx="22" cy="10" r="6" fill="none" stroke="#c47f00" stroke-width="2"/><circle cx="22" cy="10" r="9" fill="none" stroke="#c47f00" stroke-opacity=".4"/></svg>Pulse: new this week</div>
-      <div><svg width="44" height="20"><circle cx="22" cy="10" r="3" fill="#c47f00"/><ellipse cx="22" cy="10" rx="20" ry="8" fill="none" stroke="#d4cfc7"/></svg>Closer to the middle: further along</div>`;
+    const item = (icon, text) => `<div><svg width="40" height="18">${icon}</svg>${text}</div>`;
+    document.getElementById('key-left').innerHTML =
+      item(`<circle cx="7" cy="9" r="4" fill="#8a857c"/><circle cx="27" cy="9" r="8" fill="#8a857c"/>`, 'Size: your interest, 0 to 9') +
+      item(`<circle cx="9" cy="9" r="6" fill="#8a857c"/><circle cx="29" cy="9" r="5" fill="${SURFACE}" stroke="#8a857c" stroke-width="2"/>`, 'Filled: career page verified and scraped');
+    document.getElementById('key-right').innerHTML =
+      item(`<circle cx="20" cy="9" r="5" fill="none" stroke="#c47f00" stroke-width="2"/><circle cx="20" cy="9" r="8" fill="none" stroke="#c47f00" stroke-opacity=".4"/>`, 'Pulse: new this week') +
+      item(`<circle cx="20" cy="9" r="3" fill="#c47f00"/><ellipse cx="20" cy="9" rx="18" ry="7" fill="none" stroke="#d4cfc7"/>`, 'Closer to the middle: further along');
   }
 
   // ── List view: the same companies, grouped by band ────────────────────────
@@ -474,14 +418,6 @@
 
   // ── Clicks ────────────────────────────────────────────────────────────────
   document.addEventListener('click', async e => {
-    const m = e.target.closest('[data-menu]');
-    if (m) {
-      const pop = document.getElementById('pop-' + m.dataset.menu), open = pop.hidden;
-      closeMenus();
-      if (open) { pop.hidden = false; m.setAttribute('aria-expanded', 'true'); }
-      return;
-    }
-    if (!e.target.closest('.pop')) closeMenus();
     const t = e.target.closest('[data-view], [data-select], [data-score], [data-act], [data-prepare]');
     if (!t) return;
     if (t.dataset.view) {
@@ -492,21 +428,21 @@
       if (view === 'field') { layoutKey = ''; draw(); }
       return;
     }
-    if (t.dataset.select) { closeMenus(); select(Number(t.dataset.select)); return; }
+    if (t.dataset.select) { select(Number(t.dataset.select)); return; }
     if (t.dataset.prepare) { parent.postMessage({ source: 'search', action: 'prepare', pipelineId: Number(t.dataset.prepare) }, '*'); return; }
     const c = byId[selected];
     if (t.dataset.score && c) {
       const key = t.dataset.score, v = Number(t.dataset.v);
       const body = {}; body[key] = v;
       const r = await fetch(`/api/companies/${c.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (r.ok) { c[key] = v; draw(); renderMenus(); renderPanel(); }   // the dot grows (or shrinks) in place
+      if (r.ok) { c[key] = v; draw(); renderPanel(); }   // the dot grows (or shrinks) in place
       return;
     }
     if (t.dataset.act === 'back') { select(null); return; }
     if (t.dataset.act === 'edit' && c) { openCompanyEdit(c.id); return; }
     if (t.dataset.act === 'skip' && c) {
       const r = await fetch(`/api/companies/${c.id}/skip`, { method: 'POST' });
-      if (r.ok) { c.is_skipped = (await r.json()).is_skipped; draw(); renderList(); renderMenus(); renderPanel(); }
+      if (r.ok) { c.is_skipped = (await r.json()).is_skipped; draw(); renderList(); renderPanel(); }
     }
   });
   document.getElementById('field').addEventListener('click', e => { if (e.target.id === 'field-svg' || e.target.classList.contains('band-fill')) select(null); });
@@ -539,14 +475,14 @@
         const d = await r.json(); if (!r.ok) { err.textContent = d.detail || 'Skip failed'; return; }
         c.is_skipped = d.is_skipped;
       }
-      closeCompanyEdit(); draw(); renderList(); renderMenus(); renderPanel();
+      closeCompanyEdit(); draw(); renderList(); renderPanel();
     } catch (e) { err.textContent = 'Error: ' + e.message; }
   }
   document.getElementById('company-edit-modal').addEventListener('click', e => { if (e.target.id === 'company-edit-modal') closeCompanyEdit(); });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     if (!document.getElementById('company-edit-modal').hidden) { closeCompanyEdit(); return; }
-    closeMenus(); hideTip(); if (selected) select(null);
+    hideTip(); if (selected) select(null);
   });
 
   let resizeT;

@@ -6,30 +6,32 @@
   <title>{% block title %}Career Aggregator{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="/static/style.css">
-  {% if request.headers.get('sec-fetch-dest') == 'iframe' %}
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500;700&display=swap">
-  {% endif %}
+  <style>body.embedded > header.app-header { display: none; }</style>
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </head>
 {#- Shown inside the portfolio studio (as "Search"), the app drops its banner (the
-    studio's toolbar carries the menu) and takes the portfolio's fonts and colours. Chrome marks frame navigations with Sec-Fetch-Dest: iframe;
-    opened on its own, the full header is unchanged. -#}
-{% set embedded = request.headers.get('sec-fetch-dest') == 'iframe' %}
-<body{% if embedded %} class="embedded"{% endif %}>
-  {% if embedded %}
-  {#- The studio shows this app's menu in its own toolbar; tell it where we are. -#}
-  <script>parent.postMessage({ source: 'search', path: location.pathname }, '*');</script>
-  {% else %}
-  <header>
+    studio's toolbar carries the menu) and takes the portfolio's fonts and colours.
+    The page checks for itself whether it's in a frame: Chrome's Sec-Fetch-Dest
+    header only arrives over localhost or https, so opening the studio by the
+    Hub's address used to show the app's own styling inside the studio. -#}
+<body{% if request.headers.get('sec-fetch-dest') == 'iframe' %} class="embedded"{% endif %}>
+  <script>
+    if (window.top !== window.self) {
+      document.body.classList.add('embedded');
+      // The studio shows this app's menu in its own toolbar; tell it where we are.
+      parent.postMessage({ source: 'search', path: location.pathname }, '*');
+    }
+  </script>
+  <header class="app-header">
     <h1>💼 Career Aggregator</h1>
     <nav>
       <a href="/">Home</a>
+      <a href="/companies/manage">Companies</a>
       <a href="/search">Scrape</a>
       <a href="/pipeline">Pipeline</a>
-
     </nav>
   </header>
-  {% endif %}
 
   {#- A page's own menu bar, full width under the header (or, in the studio,
       under the studio's two toolbars, as a third). -#}

@@ -7,14 +7,15 @@
     Search only scrapes a company once its career page is verified here.
     Editing works like the portfolio studio's edit-on-page: hold ⌥ (or switch
     on ✎ Edit) to see what's editable, click it, Enter saves, Esc cancels. -#}
+<div class="co-page">
 <div class="co-head">
   <div>
-    <div class="page-title">Companies</div>
+    <h1>Companies</h1>
     <p class="text-muted co-summary" id="co-summary">Loading…</p>
   </div>
   <div class="co-head-actions">
-    <button type="button" class="secondary" id="co-edit-toggle" aria-pressed="false" title="Show what's editable (or hold ⌥)">✎ Edit</button>
-    <button type="button" id="co-lookup" title="Find the website and job board for every company that isn't verified">Look up websites and job boards</button>
+    <button type="button" class="co-btn co-btn--line" id="co-edit-toggle" aria-pressed="false" title="Show what's editable (or hold ⌥)">✎ Edit</button>
+    <button type="button" class="co-btn co-btn--solid" id="co-lookup" title="Find the website and job board for every company that isn't verified">Look up websites and job boards</button>
   </div>
 </div>
 <p class="co-progress text-muted" id="co-progress" hidden></p>
@@ -25,85 +26,123 @@
 
 <details class="co-add">
   <summary>Add companies by hand</summary>
-  <div class="company-tools-grid">
-    <div class="card">
-      <h3 style="margin-bottom:0.75rem;">Add Company</h3>
-      <p class="text-muted" style="font-size:0.85rem;margin-bottom:0.75rem;">Leave the career page empty and Search will look it up.</p>
+  <div class="co-add-grid">
+    <div>
+      <h3>ADD A COMPANY</h3>
+      <p>Leave the career page empty and Search will look it up.</p>
       <form id="add-company-form">
-        <div style="display:flex;flex-direction:column;gap:0.4rem;">
-          <input type="text" id="company-name" name="name" placeholder="Company name" required style="margin:0;">
-          <input type="url" id="company-url" name="career_url" placeholder="Career page (optional)" style="margin:0;">
-        </div>
-        <div style="margin-top:0.5rem;"><button type="submit" id="add-btn">Add</button></div>
-        <div id="add-status" style="margin-top:0.5rem;font-size:0.85rem;"></div>
+        <input type="text" id="company-name" name="name" placeholder="Company name" required>
+        <input type="url" id="company-url" name="career_url" placeholder="Career page (optional)">
+        <button type="submit" class="co-btn co-btn--solid" id="add-btn">Add</button>
+        <div id="add-status" class="co-msg"></div>
       </form>
     </div>
-    <div class="card">
-      <h3 style="margin-bottom:0.75rem;">Import from CSV</h3>
-      <p class="text-muted" style="font-size:0.85rem;margin-bottom:0.75rem;">CSV needs a <code>name</code> column. <code>career_url</code> is optional.</p>
-      <div style="display:flex;gap:0.5rem;align-items:flex-start;">
-        <input type="file" id="csv-file" accept=".csv" style="margin:0;padding:0.5rem;font-size:0.85rem;">
-        <button onclick="uploadCSV()" style="white-space:nowrap;flex-shrink:0;">Upload</button>
-      </div>
-      <div id="csv-status" style="margin-top:0.5rem;font-size:0.85rem;"></div>
+    <div>
+      <h3>IMPORT A CSV</h3>
+      <p>A <code>name</code> column; <code>career_url</code> is optional.</p>
+      <input type="file" id="csv-file" accept=".csv">
+      <button type="button" class="co-btn co-btn--line" onclick="uploadCSV()">Upload</button>
+      <div id="csv-status" class="co-msg"></div>
     </div>
   </div>
 </details>
+</div>
 
 <style>
-  .co-head { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap; margin-bottom:.5rem; }
-  .co-head-actions { display:flex; gap:.5rem; flex-wrap:wrap; }
-  .co-summary { margin:.25rem 0 0; }
-  .co-progress { margin:.25rem 0 .75rem; }
-  .co-filters { display:flex; gap:.4rem; flex-wrap:wrap; margin:.75rem 0; }
-  .co-filters .pill { border:1px solid #d4cfc7; background:transparent; color:#1a1916; border-radius:999px; padding:.25rem .7rem; cursor:pointer; }
-  .co-filters .pill.active { background:#2d6a4f; border-color:#2d6a4f; color:#fff; }
-  .co-add { margin-top:1.5rem; }
-  .co-add summary { cursor:pointer; color:#5c5a55; margin-bottom:.75rem; }
+  /* Companies, in the portfolio's hand: paper, hairlines, Source Serif for
+     reading and JetBrains Mono for labels and controls, forest green as the
+     one accent. No cards; the table is fixed-width so it can't spill. */
+  .co-page { --ink:#1a1916; --ink2:#5c5a55; --ink3:#8a857c; --line:#d4cfc7; --hair:#e9e5dd; --paper:#fffefb; --bg:#faf9f7;
+             --ok:#2d6a4f; --warn:#b5642a; --miss:#b42318; --tang:#c47f00;
+             --mono:'JetBrains Mono', ui-monospace, Menlo, monospace; --serif:'Source Serif 4', Georgia, serif;
+             font-family:var(--serif); color:var(--ink); max-width:72rem; margin:0 auto; padding:8px 0 40px; }
+  .co-page a { color:var(--ok); text-decoration:none; }
+  .co-page a:hover { text-decoration:underline; }
 
-  table.co-table { width:100%; border-collapse:collapse; }
-  .co-table th { text-align:left; white-space:nowrap; }
-  .co-table td { vertical-align:top; padding-top:.55rem; padding-bottom:.55rem; }
-  .co-table tr.is-skipped > td { opacity:.55; }
+  .co-head { display:flex; justify-content:space-between; align-items:flex-end; gap:1rem; flex-wrap:wrap; padding-bottom:14px; border-bottom:1px solid var(--line); }
+  .co-head h1 { font:600 24px/1.2 var(--serif) !important; margin:0; color:var(--ink); }
+  .co-summary { margin:4px 0 0; font-size:13px !important; color:var(--ink3); }
+  .co-summary b { color:var(--ink); font-weight:600; }
+  .co-head-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .co-progress { margin:10px 0 0; font-size:13px; color:var(--ink2); }
+
+  /* Buttons: text, not boxes. Overrides the app's own button styles. */
+  .co-page button.co-btn { all:unset; box-sizing:border-box; cursor:pointer; font:500 12px/1 var(--mono) !important; color:var(--ink2) !important;
+                           padding:6px 9px; border-radius:6px; white-space:nowrap; }
+  .co-page button.co-btn:hover { background:#f0ede7 !important; color:var(--ink) !important; }
+  .co-page button.co-btn:disabled { opacity:.45; cursor:default; }
+  .co-page button.co-btn--go { color:var(--ok) !important; font-weight:700 !important; }
+  .co-page button.co-btn--danger { color:var(--miss) !important; }
+  .co-page button.co-btn--line { border:1px solid var(--line); border-radius:999px; padding:8px 14px; background:var(--paper); }
+  .co-page button.co-btn--solid { background:var(--ok) !important; color:#fff !important; border-radius:999px; padding:8px 14px; }
+  .co-page button.co-btn--solid:hover { background:#235840 !important; color:#fff !important; }
+  .co-page button.co-btn[aria-pressed="true"] { background:color-mix(in srgb, var(--ok) 10%, transparent) !important; color:var(--ok) !important; border-color:var(--ok); }
+
+  /* Filters: the studio's tab style */
+  .co-filters { display:flex; gap:2px; flex-wrap:wrap; margin:10px 0 4px; }
+  .co-filters .co-tab { all:unset; cursor:pointer; padding:6px 12px; border-radius:6px; font:500 12px var(--mono) !important; color:var(--ink2) !important; }
+  .co-filters .co-tab:hover { background:#f0ede7; }
+  .co-filters .co-tab.active { color:var(--ok) !important; background:color-mix(in srgb, var(--ok) 10%, transparent); }
+  .co-count { color:var(--ink3); margin-left:6px; }
+
+  /* The table: fixed columns, hairline rows, nothing outside the page. */
+  table.co-table { width:100%; table-layout:fixed; border-collapse:collapse; margin:0; background:none !important; border:0 !important; box-shadow:none !important; }
+  .co-table col.c-name { width:16%; } .co-table col.c-site { width:16%; } .co-table col.c-page { width:27%; }
+  .co-table col.c-status { width:11%; } .co-table col.c-score { width:3.5%; } .co-table col.c-act { width:19.5%; }
+  .co-table thead, .co-table th { background:none !important; }
+  .co-table th { text-align:left; white-space:nowrap; font:600 12px var(--mono) !important; color:var(--ink3) !important; padding:12px 8px 8px !important;
+                 border:0 !important; border-bottom:1px solid var(--line) !important; text-transform:none !important; letter-spacing:.02em; }
+  .co-table td { vertical-align:top; padding:12px 8px !important; border:0 !important; border-bottom:1px solid var(--hair) !important; font-size:15px; overflow:hidden; }
+  .co-table tr:hover > td { background:rgba(240,237,231,.45); }
+  .co-table tr.is-skipped > td { opacity:.5; }
   .sortable { cursor:pointer; user-select:none; }
-  .sort-ind { font-size:.75rem; color:#aaa; margin-left:.2rem; }
-  th.col-score, td.col-score { width:34px; text-align:center; }
+  .sort-ind { color:#bdb7ac; margin-left:2px; }
+  th.col-score, td.col-score { text-align:center; padding-left:2px !important; padding-right:2px !important; }
   .co-name { font-weight:600; }
-  .co-url { display:block; max-width:26rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .co-meta { display:block; font-size:12px; color:#8a857c; font-family:'JetBrains Mono', ui-monospace, monospace; }
-  .co-ext { margin-left:.3rem; text-decoration:none; }
-  .co-fav { width:14px; height:14px; vertical-align:-2px; margin-right:.35rem; border-radius:2px; }
-  .co-empty { color:#8a857c; font-style:italic; }
-  .co-warn { color:#b5642a; }
-  .co-suggest { margin-top:.35rem; font-size:13px; color:#5c5a55; }
-  .co-suggest button, .co-actions button, .co-check button { padding:.15rem .55rem; font-size:12px; }
+  .co-url, .co-site { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .co-meta { display:block; font:12px var(--mono); color:var(--ink3); margin-top:3px; }
+  .co-ext { margin-left:4px; }
+  .co-fav { width:14px; height:14px; vertical-align:-2px; margin-right:6px; border-radius:2px; }
+  .co-empty { color:var(--ink3); font-style:italic; font-size:13px; }
+  .co-warn { color:var(--warn); }
+  .co-suggest { margin-top:6px; font-size:13px; color:var(--ink2); line-height:1.5; }
+  .co-suggest .co-btn { padding:2px 6px !important; }
 
-  /* Status: one word each, coloured by what George has to do. */
-  .co-status { display:inline-block; font:600 12px 'JetBrains Mono', ui-monospace, monospace; padding:.1rem .5rem; border-radius:999px; white-space:nowrap; }
-  .st-verified   { background:#2d6a4f; color:#fff; }
+  .co-status { display:inline-block; font:600 12px var(--mono); padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .st-verified   { background:var(--ok); color:#fff; }
   .st-found      { background:rgba(196,127,0,.14); color:#8a5a00; }
-  .st-page, .st-unverified { background:rgba(181,100,42,.12); color:#b5642a; }
-  .st-website, .st-none, .st-unknown { background:#f0ede7; color:#5c5a55; }
-  .co-actions { white-space:nowrap; display:flex; gap:.3rem; flex-wrap:wrap; }
-  .co-actions .ghost, .co-check .ghost { background:transparent; color:#1a1916; border:1px solid #d4cfc7; }
-  .co-actions .danger { background:transparent; color:#b42318; border:1px solid #e6c4c0; }
+  .st-page, .st-unverified { background:rgba(181,100,42,.12); color:var(--warn); }
+  .st-website, .st-none, .st-unknown { background:#f0ede7; color:var(--ink2); }
 
-  tr.co-check-row td { background:#f7f4ee; border-top:0; padding:.6rem .9rem .9rem; }
-  .co-check h4 { margin:0 0 .35rem; font:600 12px 'JetBrains Mono', ui-monospace, monospace; }
-  .co-check ul { margin:.35rem 0 .6rem 1rem; padding:0; }
-  .co-check li { font-size:15px; }
-  .co-count { opacity:.6; margin-left:.2rem; }
-  .co-check .co-row-actions { display:flex; gap:.4rem; flex-wrap:wrap; align-items:center; }
+  .co-actions { display:flex; flex-wrap:wrap; gap:0 2px; margin:-5px 0 0 -9px; }
+  .co-actions .co-more { display:flex; gap:0 2px; flex-wrap:wrap; width:100%; }
+  .co-actions .co-more .co-btn { color:var(--ink3) !important; }
 
-  /* Edit-on-page, as in the studio: ⌥ (or ✎ Edit) shows what's editable. */
+  tr.co-check-row td { background:#f7f4ee !important; padding:12px 16px 14px !important; }
+  .co-check h4 { margin:0 0 6px; font:600 12px var(--mono) !important; color:var(--ink); }
+  .co-check ul { margin:4px 0 8px 18px; padding:0; }
+  .co-check li { font-size:15px; margin:2px 0; }
+  .co-check .co-row-actions { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-left:-9px; }
+
+  /* Edit on the page, as in the studio: ⌥ (or ✎ Edit) shows what's editable. */
   html.co-reveal [data-edit] { outline:1.5px dashed rgba(45,106,79,.55); outline-offset:3px; border-radius:3px; cursor:text; }
-  [data-edit]:hover { outline:2px solid #2d6a4f; outline-offset:3px; border-radius:3px; background:rgba(45,106,79,.05); cursor:text; }
+  [data-edit]:hover { outline:2px solid var(--ok); outline-offset:3px; border-radius:3px; background:rgba(45,106,79,.05); cursor:text; }
   [data-edit] a:hover { cursor:pointer; }
-  .co-input { width:100%; box-sizing:border-box; font:inherit; margin:0; padding:4px 6px; border:2px solid #2d6a4f !important; border-radius:4px; background:rgba(45,106,79,.05) !important; }
-  .co-input.score { width:40px; text-align:center; }
+  .co-input { width:100%; box-sizing:border-box; font:15px var(--serif) !important; margin:0 !important; padding:4px 6px !important; border:2px solid var(--ok) !important; border-radius:4px !important; background:rgba(45,106,79,.05) !important; }
+  .co-input.score { width:40px; text-align:center; padding:4px 2px !important; }
   .co-flash { animation: co-flash 1.6s ease-out 1; }
-  @keyframes co-flash { 0%, 40% { outline:2px solid #c47f00; outline-offset:6px; } 100% { outline-color:transparent; } }
-  #co-edit-toggle[aria-pressed="true"] { background:#2d6a4f; color:#fff; border-color:#2d6a4f; }
+  @keyframes co-flash { 0%, 40% { outline:2px solid var(--tang); outline-offset:6px; } 100% { outline-color:transparent; } }
+
+  /* Adding by hand: two plain columns */
+  .co-add { margin-top:28px; border-top:1px solid var(--line); padding-top:12px; }
+  .co-add summary { cursor:pointer; font:500 12px var(--mono); color:var(--ink2); }
+  .co-add-grid { display:grid; grid-template-columns:1fr 1fr; gap:32px; margin-top:14px; }
+  .co-add h3 { font:600 12px var(--mono) !important; color:var(--ink3) !important; margin:0 0 6px !important; }
+  .co-add p { font-size:13px; color:var(--ink3); margin:0 0 8px; }
+  .co-add input[type=text], .co-add input[type=url] { width:100%; box-sizing:border-box; margin:0 0 6px !important; font:15px var(--serif) !important;
+         padding:7px 10px !important; border:1px solid var(--line) !important; border-radius:6px !important; background:var(--paper) !important; }
+  .co-add .co-msg { font-size:13px; margin-top:6px; }
+  @media (max-width: 760px) { .co-add-grid { grid-template-columns:1fr; } }
 </style>
 
 <script>
@@ -180,7 +219,7 @@
   function renderFilters() {
     const el = document.getElementById('co-filters');
     el.innerHTML = FILTERS.map(([k, label, fn]) =>
-      `<button type="button" class="pill${filter === k ? ' active' : ''}" data-filter="${k}">${label}<span class="co-count">${companiesList.filter(fn).length}</span></button>`).join('');
+      `<button type="button" class="co-tab${filter === k ? ' active' : ''}" data-filter="${k}">${label}<span class="co-count">${companiesList.filter(fn).length}</span></button>`).join('');
   }
 
   function sortInd(col) { return sortCol !== col ? '⇅' : (sortDir === 1 ? '↑' : '↓'); }
@@ -202,10 +241,10 @@
       return a.name.localeCompare(b.name);
     });
     const list = document.getElementById('companies-list');
-    if (!rows.length) { list.innerHTML = `<div class="card"><p class="text-muted">Nothing here.</p></div>`; return; }
+    if (!rows.length) { list.innerHTML = `<p class="co-empty" style="padding:18px 0;">Nothing here.</p>`; return; }
     list.innerHTML = `
-      <div class="card">
         <table class="co-table">
+          <colgroup><col class="c-name"><col class="c-site"><col class="c-page"><col class="c-status"><col class="c-score"><col class="c-score"><col class="c-score"><col class="c-act"></colgroup>
           <thead><tr>
             <th class="sortable" onclick="sortBy('name')">Company <span class="sort-ind">${sortInd('name')}</span></th>
             <th class="sortable" onclick="sortBy('website')">Website <span class="sort-ind">${sortInd('website')}</span></th>
@@ -217,13 +256,12 @@
             <th></th>
           </tr></thead>
           <tbody>${rows.map(rowHtml).join('')}</tbody>
-        </table>
-      </div>`;
+        </table>`;
   }
 
   function websiteCell(c) {
     if (!c.website) return `<span class="co-empty">add website</span>`;
-    return `<img class="co-fav" src="https://${escH(host(c.website))}/favicon.ico" alt="" onerror="this.remove()">${escH(host(c.website))}<a class="co-ext" href="${escH(c.website)}" target="_blank" rel="noopener" title="Open the website">↗</a>`;
+    return `<span class="co-site"><img class="co-fav" src="https://${escH(host(c.website))}/favicon.ico" alt="" onerror="this.remove()">${escH(host(c.website))}<a class="co-ext" href="${escH(c.website)}" target="_blank" rel="noopener" title="Open the website">↗</a></span>`;
   }
 
   function careerCell(c) {
@@ -241,10 +279,10 @@
     const bits = [];
     if (s.career_url && s.career_url.replace(/\/$/, '') !== (c.career_url || '').replace(/\/$/, '')) {
       const what = s.status === 'found' ? `${PLATFORM[s.platform] || s.platform} board · ${s.jobs ?? '?'} open` : 'careers page';
-      bits.push(`Found: <a href="${escH(s.career_url)}" target="_blank" rel="noopener">${escH(what)}</a> <button type="button" class="ghost" data-act="use-suggested" data-id="${c.id}">Use</button>`);
+      bits.push(`Found: <a href="${escH(s.career_url)}" target="_blank" rel="noopener">${escH(what)}</a> <button type="button" class="co-btn co-btn--go" data-act="use-suggested" data-id="${c.id}">Use</button>`);
     }
     if (s.website && !c.website) {
-      bits.push(`Website: ${escH(host(s.website))}${s.website_agrees ? '' : ` <span class="co-warn">(matched “${escH(s.website_name)}”)</span>`} <button type="button" class="ghost" data-act="use-website" data-id="${c.id}">Use</button>`);
+      bits.push(`Website: ${escH(host(s.website))}${s.website_agrees ? '' : ` <span class="co-warn">(matched “${escH(s.website_name)}”)</span>`} <button type="button" class="co-btn co-btn--go" data-act="use-website" data-id="${c.id}">Use</button>`);
     }
     return bits.length ? `<div class="co-suggest">${bits.join('<br>')}</div>` : '';
   }
@@ -263,12 +301,14 @@
         ${score('score_a', c.score_a)}${score('score_m', c.score_m)}
         <td class="col-score" title="Computed from active listings">${c.score_p ?? '<span class="text-muted">—</span>'}</td>
         <td><div class="co-actions">
-          ${c.career_url ? `<button type="button" class="ghost" data-act="check" data-id="${c.id}" title="Trial scrape: see what Search would collect">Check</button>` : ''}
-          ${c.career_url && !verified ? `<button type="button" data-act="verify" data-id="${c.id}" title="Confirm this career page; Search scrapes it from now on">Verify</button>` : ''}
-          ${verified ? `<button type="button" class="ghost" data-act="unverify" data-id="${c.id}" title="Stop scraping until checked again">Unverify</button>` : ''}
-          <button type="button" class="ghost" data-act="rediscover" data-id="${c.id}" title="Look this company up again">Look up</button>
-          <button type="button" class="ghost" data-act="skip" data-id="${c.id}">${c.is_skipped ? 'Unskip' : 'Skip'}</button>
-          <button type="button" class="danger" data-act="delete" data-id="${c.id}">Delete</button>
+          ${c.career_url ? `<button type="button" class="co-btn" data-act="check" data-id="${c.id}" title="Trial scrape: see what Search would collect">Check</button>` : ''}
+          ${c.career_url && !verified ? `<button type="button" class="co-btn co-btn--go" data-act="verify" data-id="${c.id}" title="Confirm this career page; Search scrapes it from now on">Verify</button>` : ''}
+          ${verified ? `<button type="button" class="co-btn" data-act="unverify" data-id="${c.id}" title="Stop scraping until checked again">Unverify</button>` : ''}
+          <div class="co-more">
+            <button type="button" class="co-btn" data-act="rediscover" data-id="${c.id}" title="Look this company up again">Look up</button>
+            <button type="button" class="co-btn" data-act="skip" data-id="${c.id}">${c.is_skipped ? 'Unskip' : 'Skip'}</button>
+            <button type="button" class="co-btn co-btn--danger" data-act="delete" data-id="${c.id}">Delete</button>
+          </div>
         </div></td>
       </tr>
       ${chk ? checkRowHtml(c, chk) : ''}`;
@@ -278,7 +318,7 @@
     if (chk === 'running') return `<tr class="co-check-row" id="check-${c.id}"><td colspan="8"><div class="co-check"><h4>Checking ${escH(shortUrl(c.career_url))}…</h4><p class="text-muted">A trial scrape of the first pages. Careers pages that need a browser take up to half a minute.</p></div></td></tr>`;
     if (chk.error && !chk.found) {
       return `<tr class="co-check-row" id="check-${c.id}"><td colspan="8"><div class="co-check"><h4>Couldn't read this page</h4><p class="co-warn">${escH(chk.error)}</p>
-        <div class="co-row-actions"><button type="button" class="ghost" data-act="close-check" data-id="${c.id}">Close</button></div></div></td></tr>`;
+        <div class="co-row-actions"><button type="button" class="co-btn" data-act="close-check" data-id="${c.id}">Close</button></div></div></td></tr>`;
     }
     const name = PLATFORM[chk.platform] || 'Careers page';
     const head = chk.found
@@ -286,15 +326,15 @@
       : `Nothing found on this page · ${chk.seconds}s`;
     const samples = (chk.samples || []).map(s => `<li><a href="${escH(s.url)}" target="_blank" rel="noopener">${escH(s.title)}</a>${s.location ? ` <span class="text-muted">· ${escH(s.location)}</span>` : ''}</li>`).join('');
     const useBoard = chk.via_page && chk.board_url
-      ? `<button type="button" class="ghost" data-act="use-board" data-id="${c.id}" data-url="${escH(chk.board_url)}" title="Scrape the board directly: faster, and it lists every posting">Use the ${escH(name)} board instead</button>` : '';
+      ? `<button type="button" class="co-btn co-btn--go" data-act="use-board" data-id="${c.id}" data-url="${escH(chk.board_url)}" title="Scrape the board directly: faster, and it lists every posting">Use the ${escH(name)} board instead</button>` : '';
     const verified = statusOf(c) === 'verified';
     return `<tr class="co-check-row" id="check-${c.id}"><td colspan="8"><div class="co-check">
       <h4>${escH(head)}</h4>
       ${samples ? `<ul>${samples}</ul>` : `<p class="text-muted">If the page lists jobs, they load in a way Search can't read. Look for a job board link on it and paste that instead.</p>`}
       <div class="co-row-actions">
-        ${!verified && chk.found ? `<button type="button" data-act="verify" data-id="${c.id}">Verify this page</button>` : ''}
+        ${!verified && chk.found ? `<button type="button" class="co-btn co-btn--go" data-act="verify" data-id="${c.id}">Verify this page</button>` : ''}
         ${useBoard}
-        <button type="button" class="ghost" data-act="close-check" data-id="${c.id}">Close</button>
+        <button type="button" class="co-btn" data-act="close-check" data-id="${c.id}">Close</button>
       </div></div></td></tr>`;
   }
 
@@ -422,17 +462,17 @@
     try {
       let c = await api('', { method: 'POST', body: JSON.stringify({ name, career_url }) });
       if (!career_url) { status.textContent = 'Added. Looking it up…'; c = await api(`/${c.id}/discover`, { method: 'POST' }); }
-      status.innerHTML = `<span class="text-success">Added ${escH(c.name)}: ${STATUS[statusOf(c)].label}.</span>`;
+      status.innerHTML = `<span style="color:#2d6a4f">Added ${escH(c.name)}: ${STATUS[statusOf(c)].label}.</span>`;
       document.getElementById('company-name').value = ''; document.getElementById('company-url').value = '';
       await loadCompanies();
-    } catch (err) { status.innerHTML = `<span class="text-danger">${escH(err.message)}</span>`; }
+    } catch (err) { status.innerHTML = `<span style="color:#b42318">${escH(err.message)}</span>`; }
     finally { btn.disabled = false; btn.textContent = 'Add'; }
   });
 
   function uploadCSV() {
     const fileInput = document.getElementById('csv-file');
     const status = document.getElementById('csv-status');
-    if (!fileInput.files.length) { status.innerHTML = '<span class="text-danger">Please select a CSV file first.</span>'; return; }
+    if (!fileInput.files.length) { status.innerHTML = '<span style="color:#b42318">Please select a CSV file first.</span>'; return; }
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
     status.innerHTML = '<span class="text-muted">Uploading…</span>';
@@ -441,10 +481,10 @@
       .then(({ ok, data }) => {
         if (!ok) throw new Error(Array.isArray(data.detail) ? data.detail.map(e => e.msg).join(', ') : (data.detail || 'Server error'));
         let msg = `<strong>${data.added}</strong> added, <strong>${data.skipped}</strong> skipped.`;
-        if (data.errors && data.errors.length) msg += ` <span class="text-danger">Errors: ${data.errors.join('; ')}</span>`;
+        if (data.errors && data.errors.length) msg += ` <span style="color:#b42318">Errors: ${data.errors.join('; ')}</span>`;
         status.innerHTML = msg; fileInput.value = ''; loadCompanies();
       })
-      .catch(e => { status.innerHTML = `<span class="text-danger">Upload failed: ${e.message}</span>`; });
+      .catch(e => { status.innerHTML = `<span style="color:#b42318">Upload failed: ${e.message}</span>`; });
   }
 
   document.addEventListener('DOMContentLoaded', loadCompanies);
