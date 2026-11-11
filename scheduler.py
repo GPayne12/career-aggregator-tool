@@ -47,14 +47,22 @@ def _save_jobs(db: Session, scraper: JobScraper, company: Company,
             continue
         candidates.append((job_data, posted_date))
 
-    # Step 2: deduplicate by normalised title within this batch
+    # Step 2: deduplicate within this batch, by link and by normalised title.
+    # A posting without a link can't be saved or recognised later, so it's dropped.
     seen_titles: set = set()
+    seen_urls: set = set()
     deduped: List[tuple] = []
     for job_data, posted_date in candidates:
+        url = (job_data.get('url') or '').strip()
+        if not url or url in seen_urls:
+            continue
         norm = job_data.get('title', '').lower().strip()
-        if norm not in seen_titles:
-            seen_titles.add(norm)
-            deduped.append((job_data, posted_date))
+        if norm in seen_titles:
+            continue
+        seen_urls.add(url)
+        seen_titles.add(norm)
+        job_data['url'] = url
+        deduped.append((job_data, posted_date))
 
     # Step 3: cap at PER_COMPANY_CAP, keyword-matched jobs fill slots first
     if len(deduped) > PER_COMPANY_CAP:
@@ -67,13 +75,15 @@ def _save_jobs(db: Session, scraper: JobScraper, company: Company,
     else:
         limited = deduped
 
-    # Step 4: upsert
+    # Step 4: upsert. The session runs with autoflush off, so a query can't see
+    # rows added earlier in this loop; look postings up in a map kept here instead,
+    # loaded once and updated as rows are added.
+    by_url = {}
+    for job in db.query(Job).filter(Job.company_id == company.id).order_by(Job.id).all():
+        by_url.setdefault(job.url, job)
     added = 0
     for job_data, posted_date in limited:
-        existing = db.query(Job).filter(
-            Job.company_id == company.id,
-            Job.url == job_data['url']
-        ).first()
+        existing = by_url.get(job_data['url'])
         if existing:
             existing.fetched_at = datetime.utcnow()
             existing.is_active = True
@@ -81,7 +91,7 @@ def _save_jobs(db: Session, scraper: JobScraper, company: Company,
                 existing.description = job_data['description']
         else:
             location = job_data.get('location')
-            db.add(Job(
+            job = Job(
                 company_id=company.id,
                 title=job_data['title'],
                 location=location,
@@ -92,7 +102,9 @@ def _save_jobs(db: Session, scraper: JobScraper, company: Company,
                 posted_date=posted_date,
                 fetched_at=datetime.utcnow(),
                 is_active=True,
-            ))
+            )
+            db.add(job)
+            by_url[job.url] = job
             added += 1
     return added
 
@@ -148,7 +160,7 @@ def iter_scrape() -> Generator[dict, None, None]:
                 # A posting that's no longer on the board has closed. Only when the
                 # board answered: an empty or failed read says nothing about closures.
                 if scraped_jobs:
-                    still_open = {j['url'] for j in scraped_jobs if j.get('url')}
+                    still_open = {j['url'].strip() for j in scraped_jobs if j.get('url')}
                     for job in db.query(Job).filter(Job.company_id == company.id, Job.is_active == True).all():
                         if job.url not in still_open:
                             job.is_active = False
