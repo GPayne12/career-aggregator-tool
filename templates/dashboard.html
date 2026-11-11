@@ -17,6 +17,11 @@
   <a class="bar3-item" href="/pipeline"><b id="n-pipeline">—</b> in pipeline</a>
   <a class="bar3-item" href="/companies/manage"><b id="n-companies">—</b> companies</a>
   <a class="bar3-item" href="/profiles/manage"><b id="n-profiles">—</b> keyword profiles</a>
+  <span class="bar3-sep" aria-hidden="true"></span>
+  {#- What the old side panel listed, one menu each; picking a company opens it. -#}
+  <div class="bar3-menu"><button type="button" class="bar3-item" data-menu="live" aria-expanded="false"><b id="n-live">—</b> live ▾</button><div class="pop" id="pop-live" hidden></div></div>
+  <div class="bar3-menu"><button type="button" class="bar3-item" data-menu="saved" aria-expanded="false"><b id="n-saved">—</b> saved ▾</button><div class="pop" id="pop-saved" hidden></div></div>
+  <div class="bar3-menu"><button type="button" class="bar3-item" data-menu="top" aria-expanded="false">most interest ▾</button><div class="pop" id="pop-top" hidden></div></div>
   <span class="bar3-spacer"></span>
   <label class="bar3-find"><span class="sr">Find a company</span>
     <input id="find" type="search" placeholder="Find a company" autocomplete="off" list="find-list"><datalist id="find-list"></datalist></label>
@@ -32,12 +37,14 @@
   <section class="ov-main" aria-label="Companies">
     <div class="ov-field" id="field">
       <svg id="field-svg" role="img" aria-labelledby="field-title"><title id="field-title">Companies by how far along each is, sized by your interest</title></svg>
+      <div class="ov-key" id="key" aria-hidden="true"></div>
       <div class="ov-tip" id="tip" hidden></div>
       <p class="ov-empty" id="field-empty" hidden></p>
     </div>
     <div class="ov-list" id="list" hidden></div>
   </section>
-  <aside class="ov-panel" id="panel" aria-live="polite"></aside>
+  {#- Opens over the right edge when a company is selected. -#}
+  <aside class="ov-panel" id="panel" aria-live="polite" hidden></aside>
 </div>
 
 <!-- Company edit dialog (from the old dashboard) -->
@@ -74,14 +81,32 @@
                      border:1px solid #d4cfc7; border-radius:999px; background:#fffefb; }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 
-  /* ── Layout: the field, with the panel beside it ─────────────────────── */
-  .ov { display:grid; grid-template-columns: minmax(0,1fr) 360px; height:calc(100vh - 44px); }
-  .ov-main { position:relative; min-width:0; }
+  .bar3-sep { width:1px; height:20px; background:#d4cfc7; margin:0 6px; }
+  .bar3-menu { position:relative; }
+  .pop { position:absolute; top:calc(100% + 6px); left:0; z-index:20; width:340px; max-height:60vh; overflow:auto; padding:6px;
+         background:#fffefb; border:1px solid #d4cfc7; border-radius:10px; box-shadow:0 10px 30px rgba(26,25,22,.14); }
+  .pop ul { list-style:none; margin:0; padding:0; }
+  .pop li { padding:7px 10px; border-radius:6px; cursor:pointer; }
+  .pop li:hover { background:#f7f4ee; }
+  .pop .stage { display:block; }
+  .pop .muted { color:#8a857c; font-size:13px; }
+  .pop p { margin:6px 10px; color:#8a857c; font-size:13px; }
+
+  /* ── Layout: the field fills the page; the panel opens over its edge ── */
+  .ov { position:relative; height:calc(100vh - 44px); }
+  .ov-main { position:absolute; inset:0; }
   .ov-field { position:absolute; inset:0; }
-  .ov-field svg { width:100%; height:100%; display:block; }
+  .ov-field svg#field-svg { width:100%; height:100%; display:block; }
   .ov-empty { position:absolute; top:45%; width:100%; text-align:center; color:#8a857c; }
-  .ov-panel { border-left:1px solid #d4cfc7; background:#fffefb; overflow:auto; padding:20px 22px 28px; }
-  @media (max-width: 900px) { .ov { grid-template-columns:1fr; height:auto; } .ov-main { height:70vh; } .ov-panel { border-left:0; border-top:1px solid #d4cfc7; } }
+  .ov-panel { position:absolute; top:0; right:0; bottom:0; width:360px; max-width:100%; z-index:10; box-sizing:border-box;
+              background:#fffefb; border-left:1px solid #d4cfc7; box-shadow:-12px 0 32px rgba(26,25,22,.08); overflow:auto; padding:20px 22px 28px; }
+  .ov-panel[hidden] { display:none; }
+
+  /* The key sits in the field's corner, behind the dots. */
+  .ov-key { position:absolute; left:20px; bottom:16px; z-index:0; pointer-events:none; opacity:.62; display:grid; gap:6px; max-width:280px; }
+  .ov-key div { display:flex; align-items:center; gap:10px; font-size:13px; color:#5c5a55; }
+  .ov-key svg { flex:none; }
+  .ov-field svg#field-svg { position:relative; z-index:1; }
 
   /* Bands and their labels */
   .band { fill:none; stroke:#d4cfc7; stroke-width:1; }
@@ -113,7 +138,7 @@
   .ov-panel ul { list-style:none; margin:0; padding:0; }
   .ov-panel li { padding:6px 0; border-bottom:1px solid #eeeae3; }
   .ov-panel .muted { color:#8a857c; font-size:13px; }
-  .ov-back { border:0; background:none !important; color:#5c5a55 !important; padding:0 !important; margin-bottom:10px; cursor:pointer; }
+  .ov-back { float:right; border:0; background:none !important; color:#5c5a55 !important; padding:2px 4px !important; cursor:pointer; }
   .tag { display:inline-block; font:600 12px 'JetBrains Mono', ui-monospace, monospace; padding:1px 8px; border-radius:999px; color:#fff; }
   .tag.t-talking { background:#c47f00; } .tag.t-applied { background:#1f8a5a; } .tag.t-preparing { background:#5b5fc7; }
   .tag.t-watching { background:#8a857c; } .tag.t-closed { background:#c9c3b8; color:#1a1916; }
@@ -207,6 +232,8 @@
     document.getElementById('find-list').innerHTML = active.map(c => `<option value="${esc(c.name)}">`).join('');
     draw();
     renderList();
+    renderMenus();
+    renderKey();
     renderPanel();
   }
 
@@ -216,7 +243,11 @@
     const svg = d3.select('#field-svg');
     const W = box.clientWidth, H = box.clientHeight;
     if (!W || !H) return;
-    const cx = W / 2, cy = H / 2 + 8, R = Math.min(W, H) / 2 - 28;
+    // The layout runs in a circle of radius R; it's drawn stretched sideways by
+    // sx, so the bands become ellipses that fill a landscape page.
+    const cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 - 22;
+    const sx = Math.max(1, Math.min((W / 2 - 22) / R, 1.8));
+    const X = x => cx + (x - cx) * sx;
     const data = companies.filter(c => !c.is_skipped);
     document.getElementById('field-empty').hidden = data.length > 0;
     document.getElementById('field-empty').textContent = 'No companies yet. Add some in Intake or Companies.';
@@ -231,15 +262,16 @@
     if (g.empty()) {
       g = svg.append('g').attr('class', 'field');
       const bands = g.append('g').attr('class', 'bands');
-      // Live bands get a faint wash of their colour, the outer ones stay paper.
+      // Live bands get a faint wash of their colour; the outer ones are clear,
+      // so the key behind the field shows through.
       BANDS.slice().reverse().forEach(b => {
-        bands.append('circle').attr('class', 'band-fill').attr('cx', cx).attr('cy', cy).attr('r', b.outer * R)
-          .attr('fill', ['talking', 'applied', 'preparing'].includes(b.key) ? d3.color(b.color).copy({ opacity: .06 }) : SURFACE);
+        bands.append('ellipse').attr('class', 'band-fill').attr('cx', cx).attr('cy', cy).attr('rx', b.outer * R * sx).attr('ry', b.outer * R)
+          .attr('fill', ['talking', 'applied', 'preparing'].includes(b.key) ? d3.color(b.color).copy({ opacity: .06 }) : 'none');
       });
-      BANDS.forEach(b => bands.append('circle').attr('class', 'band' + (b.outer < .6 ? ' is-live' : '')).attr('cx', cx).attr('cy', cy).attr('r', b.outer * R));
+      BANDS.forEach(b => bands.append('ellipse').attr('class', 'band' + (b.outer < .6 ? ' is-live' : ''))
+        .attr('cx', cx).attr('cy', cy).attr('rx', b.outer * R * sx).attr('ry', b.outer * R));
       g.append('g').attr('class', 'band-labels');
       g.append('g').attr('class', 'nodes');
-      g.append('g').attr('class', 'labels');
     }
     // Band labels with counts, set along the top of each band.
     const counts = d3.rollup(data, v => v.length, d => d.band);
@@ -288,10 +320,7 @@
       .on('mouseleave', hideTip)
       .on('click', (e, d) => select(d.id));
 
-    // Names: only where they help (live bands, and the companies you care most about).
-    const labelled = new Set(nodes.filter(n => ['talking', 'applied', 'preparing'].includes(n.c.band) || interestOf(n.c) >= 4 || n.id === selected).map(n => n.id));
-    const labels = g.select('.labels').selectAll('text').data(nodes.filter(n => labelled.has(n.id)), d => d.id)
-      .join('text').attr('class', 'node-label').text(d => d.c.name);
+    // No names on the dots: a company's name shows when you hover it.
 
     // Physics: pull each dot to its own depth in its band (so a crowded band
     // fills its area instead of forming a single ring), keep it inside the
@@ -318,10 +347,7 @@
           if (Math.abs(off) < half) a = TOP + (off < 0 ? -half : half);
           n.x = cx + Math.cos(a) * t; n.y = cy + Math.sin(a) * t;
         }
-        nodesSel.attr('transform', d => `translate(${d.x},${d.y})`);
-        // names sit on the outward side of the dot, away from the centre's band labels
-        labels.attr('text-anchor', d => d.x < cx ? 'end' : 'start')
-          .attr('x', d => d.x < cx ? d.x - d.r - 5 : d.x + d.r + 5).attr('y', d => d.y + 4);
+        nodesSel.attr('transform', d => `translate(${X(d.x)},${d.y})`);
       });
     applyFind();
   }
@@ -361,10 +387,11 @@
   function renderPanel() {
     const panel = document.getElementById('panel');
     const c = byId[selected];
-    if (!c) { panel.innerHTML = overviewPanel(); return; }
+    panel.hidden = !c;
+    if (!c) { panel.innerHTML = ''; return; }
     const apps = c.applications.slice().sort((a, b) => STAGE_ORDER.indexOf(a.status) - STAGE_ORDER.indexOf(b.status));
     panel.innerHTML = `
-      <button type="button" class="ov-back" data-act="back">← All companies</button>
+      <button type="button" class="ov-back" data-act="back" aria-label="Close">Close ×</button>
       <h2>${esc(c.name)}</h2>
       <p><span class="tag t-${c.band}">${BAND[c.band].label}</span> <span class="muted">${esc(BAND[c.band].hint)}</span></p>
       ${c.website ? `<p class="muted"><a href="${esc(c.website)}" target="_blank" rel="noopener">${esc(host(c.website))} ↗</a></p>` : ''}
@@ -391,30 +418,36 @@
       </p>`;
   }
 
-  function overviewPanel() {
+  // ── The bar's menus: what the old side panel listed ──────────────────────
+  function renderMenus() {
     const active = companies.filter(c => !c.is_skipped);
     const live = [];
     active.forEach(c => c.applications.filter(a => a.status !== 'rejected').forEach(a => live.push({ a, c })));
     live.sort((x, y) => STAGE_ORDER.indexOf(x.a.status) - STAGE_ORDER.indexOf(y.a.status) || (y.a.changed || '').localeCompare(x.a.changed || ''));
-    const saved = live.filter(x => x.a.status === 'saved').slice(0, 6);
+    const saved = live.filter(x => x.a.status === 'saved');
     const going = live.filter(x => x.a.status !== 'saved');
-    const top = active.slice().sort((a, b) => interestOf(b) - interestOf(a)).filter(c => interestOf(c) > 0).slice(0, 5);
-    const item = ({ a, c }) => `<li class="live-item" data-select="${c.id}"><span class="stage">${STAGE_LABEL[a.status]}</span><br><b>${esc(a.title)}</b> <span class="muted">· ${esc(c.name)}</span></li>`;
-    return `
-      <h2>Your field</h2>
-      <p class="muted">${active.length} companies. Closer to the middle is further along; bigger is more interest. Click a dot to turn its interest up.</p>
-      <h3>LIVE APPLICATIONS · ${going.length}</h3>
-      ${going.length ? `<ul>${going.map(item).join('')}</ul>` : '<p class="muted">Nothing in flight.</p>'}
-      <h3>RECENTLY SAVED · ${saved.length}</h3>
-      ${saved.length ? `<ul>${saved.map(item).join('')}</ul>` : '<p class="muted">No saved jobs. <a href="/search">Browse postings →</a></p>'}
-      ${top.length ? `<h3>MOST INTEREST</h3><ul>${top.map(c => `<li class="live-item" data-select="${c.id}"><b>${esc(c.name)}</b> <span class="muted">· ${interestOf(c)} of 9 · ${BAND[c.band].label}</span></li>`).join('')}</ul>` : ''}
-      <h3>HOW TO READ IT</h3>
-      <div class="legend">
-        <div><svg width="44" height="20"><circle cx="8" cy="10" r="5" fill="#1f8a5a"/><circle cx="30" cy="10" r="9" fill="#1f8a5a"/></svg>Size: your interest, 0 to 9</div>
-        <div><svg width="44" height="20"><circle cx="10" cy="10" r="7" fill="#8a857c"/><circle cx="32" cy="10" r="6" fill="${SURFACE}" stroke="#8a857c" stroke-width="2"/></svg>Filled: career page verified and scraped. Hollow: not yet</div>
-        <div><svg width="44" height="20"><circle cx="22" cy="10" r="6" fill="none" stroke="#c47f00" stroke-width="2"/><circle cx="22" cy="10" r="9" fill="none" stroke="#c47f00" stroke-opacity=".4"/></svg>Pulse: new this week (a stage moved, or fresh matching postings)</div>
-        ${BANDS.map(b => `<div><span class="tag t-${b.key}">${b.label}</span>${esc(b.hint)}</div>`).join('')}
-      </div>`;
+    const top = active.slice().sort((a, b) => interestOf(b) - interestOf(a) || a.name.localeCompare(b.name)).filter(c => interestOf(c) > 0).slice(0, 12);
+    const item = ({ a, c }) => `<li data-select="${c.id}"><span class="stage">${STAGE_LABEL[a.status]}</span><b>${esc(a.title)}</b> <span class="muted">· ${esc(c.name)}</span></li>`;
+    document.getElementById('n-live').textContent = going.length;
+    document.getElementById('n-saved').textContent = saved.length;
+    document.getElementById('pop-live').innerHTML = going.length ? `<ul>${going.map(item).join('')}</ul>` : '<p>Nothing in flight.</p>';
+    document.getElementById('pop-saved').innerHTML = saved.length ? `<ul>${saved.map(item).join('')}</ul>` : '<p>No saved jobs. <a href="/search">Browse postings →</a></p>';
+    document.getElementById('pop-top').innerHTML = top.length
+      ? `<ul>${top.map(c => `<li data-select="${c.id}"><b>${esc(c.name)}</b> <span class="muted">· ${interestOf(c)} of 9 · ${BAND[c.band].label}</span></li>`).join('')}</ul>`
+      : '<p>No interest set yet. Click a dot and turn it up.</p>';
+  }
+  function closeMenus() {
+    document.querySelectorAll('.pop').forEach(p => { p.hidden = true; });
+    document.querySelectorAll('[data-menu]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+  }
+
+  // ── The key, in the field's corner behind the dots ────────────────────────
+  function renderKey() {
+    document.getElementById('key').innerHTML = `
+      <div><svg width="44" height="20"><circle cx="8" cy="10" r="5" fill="#8a857c"/><circle cx="30" cy="10" r="9" fill="#8a857c"/></svg>Size: your interest, 0 to 9</div>
+      <div><svg width="44" height="20"><circle cx="10" cy="10" r="7" fill="#8a857c"/><circle cx="32" cy="10" r="6" fill="${SURFACE}" stroke="#8a857c" stroke-width="2"/></svg>Filled: career page verified and scraped</div>
+      <div><svg width="44" height="20"><circle cx="22" cy="10" r="6" fill="none" stroke="#c47f00" stroke-width="2"/><circle cx="22" cy="10" r="9" fill="none" stroke="#c47f00" stroke-opacity=".4"/></svg>Pulse: new this week</div>
+      <div><svg width="44" height="20"><circle cx="22" cy="10" r="3" fill="#c47f00"/><ellipse cx="22" cy="10" rx="20" ry="8" fill="none" stroke="#d4cfc7"/></svg>Closer to the middle: further along</div>`;
   }
 
   // ── List view: the same companies, grouped by band ────────────────────────
@@ -441,6 +474,14 @@
 
   // ── Clicks ────────────────────────────────────────────────────────────────
   document.addEventListener('click', async e => {
+    const m = e.target.closest('[data-menu]');
+    if (m) {
+      const pop = document.getElementById('pop-' + m.dataset.menu), open = pop.hidden;
+      closeMenus();
+      if (open) { pop.hidden = false; m.setAttribute('aria-expanded', 'true'); }
+      return;
+    }
+    if (!e.target.closest('.pop')) closeMenus();
     const t = e.target.closest('[data-view], [data-select], [data-score], [data-act], [data-prepare]');
     if (!t) return;
     if (t.dataset.view) {
@@ -451,21 +492,21 @@
       if (view === 'field') { layoutKey = ''; draw(); }
       return;
     }
-    if (t.dataset.select) { select(Number(t.dataset.select)); return; }
+    if (t.dataset.select) { closeMenus(); select(Number(t.dataset.select)); return; }
     if (t.dataset.prepare) { parent.postMessage({ source: 'search', action: 'prepare', pipelineId: Number(t.dataset.prepare) }, '*'); return; }
     const c = byId[selected];
     if (t.dataset.score && c) {
       const key = t.dataset.score, v = Number(t.dataset.v);
       const body = {}; body[key] = v;
       const r = await fetch(`/api/companies/${c.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (r.ok) { c[key] = v; draw(); renderPanel(); }   // the dot grows (or shrinks) in place
+      if (r.ok) { c[key] = v; draw(); renderMenus(); renderPanel(); }   // the dot grows (or shrinks) in place
       return;
     }
     if (t.dataset.act === 'back') { select(null); return; }
     if (t.dataset.act === 'edit' && c) { openCompanyEdit(c.id); return; }
     if (t.dataset.act === 'skip' && c) {
       const r = await fetch(`/api/companies/${c.id}/skip`, { method: 'POST' });
-      if (r.ok) { c.is_skipped = (await r.json()).is_skipped; draw(); renderList(); renderPanel(); }
+      if (r.ok) { c.is_skipped = (await r.json()).is_skipped; draw(); renderList(); renderMenus(); renderPanel(); }
     }
   });
   document.getElementById('field').addEventListener('click', e => { if (e.target.id === 'field-svg' || e.target.classList.contains('band-fill')) select(null); });
@@ -498,11 +539,15 @@
         const d = await r.json(); if (!r.ok) { err.textContent = d.detail || 'Skip failed'; return; }
         c.is_skipped = d.is_skipped;
       }
-      closeCompanyEdit(); draw(); renderList(); renderPanel();
+      closeCompanyEdit(); draw(); renderList(); renderMenus(); renderPanel();
     } catch (e) { err.textContent = 'Error: ' + e.message; }
   }
   document.getElementById('company-edit-modal').addEventListener('click', e => { if (e.target.id === 'company-edit-modal') closeCompanyEdit(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeCompanyEdit(); hideTip(); } });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (!document.getElementById('company-edit-modal').hidden) { closeCompanyEdit(); return; }
+    closeMenus(); hideTip(); if (selected) select(null);
+  });
 
   let resizeT;
   window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (view === 'field') draw(); }, 150); });
