@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}Survey - Career Aggregator{% endblock %}
+{% block title %}Survey · Pathways{% endblock %}
 
 {#- Survey (was Scrape): reads every verified career page for new postings and
-    lists what's open from the last week. Same hand as Companies: paper,
+    lists what's open from the last week. Same hand as Landscape: paper,
     hairlines, Source Serif to read, JetBrains Mono for labels and controls,
     forest green as the one accent. The everyday controls sit in the third bar;
     the rarer ones (profiles, region, words to leave out) open under it. -#}
@@ -22,6 +22,7 @@
   <label class="bar3-find"><span class="sr">Find a title or company</span>
     <input id="sv-find" type="search" placeholder="Find a title or company" autocomplete="off"></label>
   <button type="button" class="bar3-item" id="sv-refine-toggle" aria-expanded="false" aria-controls="sv-refine">Refine<span class="bar3-dot" id="sv-refine-dot" hidden></span></button>
+  <button type="button" class="bar3-item" id="sv-export" title="Download the postings shown, as a spreadsheet">Export</button>
 </nav>
 <section class="sv-refine" id="sv-refine" hidden aria-label="Refine">
   <div class="sv-refine-row">
@@ -55,7 +56,6 @@
       <h1>Survey</h1>
       <p class="sv-summary" id="sv-summary">Loading…</p>
     </div>
-    <button type="button" class="sv-btn" id="sv-export" title="Download the postings shown, as a spreadsheet">Export CSV</button>
   </div>
 
   <div class="sv-progress" id="sv-progress" hidden>
@@ -272,7 +272,7 @@
     };
     source.onerror = () => {
       source.close(); done();
-      label.innerHTML = '<span class="sv-err">Lost the connection to Search. Check its log in the dev dashboard.</span>';
+      label.innerHTML = '<span class="sv-err">Lost the connection to Pathways. Check its log in the dev dashboard.</span>';
     };
   }
   $('sv-run').addEventListener('click', runSurvey);
@@ -533,7 +533,7 @@
       if (openId !== id) return;
       $('sv-over-body').innerHTML = d.description && d.description.trim().length > 80
         ? `<div class="sv-over-text">${escH(d.description.trim())}</div>`
-        : `<p class="sv-over-none">Search has only the title for this one. Open the posting to read it; pursuing it fetches the full text for Render.</p>`;
+        : `<p class="sv-over-none">Pathways has only the title for this one. Open the posting to read it; pursuing it fetches the full text for Render.</p>`;
     } catch { $('sv-over-body').innerHTML = `<p class="sv-over-none">Couldn't load the posting text.</p>`; }
   }
   function closePreview() {

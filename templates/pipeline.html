@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Pipeline - Career Aggregator{% endblock %}
+{% block title %}Pipeline · Pathways{% endblock %}
 
 {#- Pipeline: every application as a dot, flowing left to right through its stages.
     Read it like the Overview:
@@ -453,7 +453,7 @@
       version = null;   // the next poll reloads quietly
     } catch {
       Object.assign(a, prev); render();
-      toast(`Couldn't move ${a.title}. Search didn't answer.`);
+      toast(`Couldn't move ${a.title}. Pathways didn't answer.`);
     }
   }
 

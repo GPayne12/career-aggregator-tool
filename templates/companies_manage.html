@@ -1,10 +1,19 @@
 {% extends "base.html" %}
 
-{% block title %}Landscape - Career Aggregator{% endblock %}
+{% block title %}Landscape · Pathways{% endblock %}
+
+{% block bar %}
+<nav class="bar3 co-bar" aria-label="Landscape">
+  <div class="co-filters" role="tablist" id="co-filters"></div>
+  <span class="bar3-spacer"></span>
+  <button type="button" class="co-btn co-btn--line" id="co-edit-toggle" aria-pressed="false" title="Show what's editable (or hold ⌥)">✎ Edit</button>
+  <button type="button" class="co-btn co-btn--solid" id="co-lookup" title="Find the website and job board for every company that isn't verified">Look up websites and job boards</button>
+</nav>
+{% endblock %}
 
 {% block content %}
 {#- Companies: where each company's website and career page are reviewed.
-    Search only surveys a company once its career page is verified here.
+    Pathways only surveys a company once its career page is verified here.
     Editing works like the portfolio studio's edit-on-page: hold ⌥ (or switch
     on ✎ Edit) to see what's editable, click it, Enter saves, Esc cancels. -#}
 <div class="co-page">
@@ -13,14 +22,8 @@
     <h1>Landscape</h1>
     <p class="text-muted co-summary" id="co-summary">Loading…</p>
   </div>
-  <div class="co-head-actions">
-    <button type="button" class="co-btn co-btn--line" id="co-edit-toggle" aria-pressed="false" title="Show what's editable (or hold ⌥)">✎ Edit</button>
-    <button type="button" class="co-btn co-btn--solid" id="co-lookup" title="Find the website and job board for every company that isn't verified">Look up websites and job boards</button>
-  </div>
 </div>
 <p class="co-progress text-muted" id="co-progress" hidden></p>
-
-<div class="co-filters" role="tablist" id="co-filters"></div>
 
 <div id="companies-list"></div>
 
@@ -46,16 +49,27 @@
   .co-progress { margin:10px 0 0; font-size:13px; color:var(--ink2); }
 
   /* Buttons: text, not boxes. Overrides the app's own button styles. */
-  .co-page button.co-btn { all:unset; box-sizing:border-box; cursor:pointer; font:500 12px/1 var(--mono) !important; color:var(--ink2) !important;
+  :is(.co-page, .co-bar) button.co-btn { all:unset; box-sizing:border-box; cursor:pointer; font:500 12px/1 var(--mono) !important; color:var(--ink2) !important;
                            padding:6px 9px; border-radius:6px; white-space:nowrap; }
-  .co-page button.co-btn:hover { background:#f0ede7 !important; color:var(--ink) !important; }
-  .co-page button.co-btn:disabled { opacity:.45; cursor:default; }
-  .co-page button.co-btn--go { color:var(--ok) !important; font-weight:700 !important; }
-  .co-page button.co-btn--danger { color:var(--miss) !important; }
-  .co-page button.co-btn--line { border:1px solid var(--line); border-radius:999px; padding:8px 14px; background:var(--paper); }
-  .co-page button.co-btn--solid { background:var(--ok) !important; color:#fff !important; border-radius:999px; padding:8px 14px; }
-  .co-page button.co-btn--solid:hover { background:#235840 !important; color:#fff !important; }
-  .co-page button.co-btn[aria-pressed="true"] { background:color-mix(in srgb, var(--ok) 10%, transparent) !important; color:var(--ok) !important; border-color:var(--ok); }
+  :is(.co-page, .co-bar) button.co-btn:hover { background:#f0ede7 !important; color:var(--ink) !important; }
+  :is(.co-page, .co-bar) button.co-btn:disabled { opacity:.45; cursor:default; }
+  :is(.co-page, .co-bar) button.co-btn--go { color:var(--ok) !important; font-weight:700 !important; }
+  :is(.co-page, .co-bar) button.co-btn--danger { color:var(--miss) !important; }
+  :is(.co-page, .co-bar) button.co-btn--line { border:1px solid var(--line); border-radius:999px; padding:8px 14px; background:var(--paper); }
+  :is(.co-page, .co-bar) button.co-btn--solid { background:var(--ok) !important; color:#fff !important; border-radius:999px; padding:8px 14px; }
+  :is(.co-page, .co-bar) button.co-btn--solid:hover { background:#235840 !important; color:#fff !important; }
+  :is(.co-page, .co-bar) button.co-btn[aria-pressed="true"] { background:color-mix(in srgb, var(--ok) 10%, transparent) !important; color:var(--ok) !important; border-color:var(--ok); }
+
+  /* The third bar, as on the Overview, Survey and Pipeline */
+  .co-bar { --ink:#1a1916; --ink2:#5c5a55; --ink3:#8a857c; --line:#d4cfc7; --hair:#e9e5dd; --paper:#fffefb; --bg:#faf9f7;
+             --ok:#2d6a4f; --warn:#b5642a; --miss:#b42318; --tang:#c47f00;
+             --mono:'JetBrains Mono', ui-monospace, Menlo, monospace; --serif:'Source Serif 4', Georgia, serif;
+             display:flex; align-items:center; gap:4px; padding:7px 20px; min-height:44px; box-sizing:border-box; flex-wrap:wrap;
+             background:#faf9f7; border-bottom:1px solid #d4cfc7; position:sticky; top:0; z-index:5; }
+  .co-bar .bar3-spacer { flex:1; }
+  .co-bar .co-filters { margin:0; }
+  .co-bar button.co-btn--line, .co-bar button.co-btn--solid { padding:7px 14px; }
+  .co-bar button.co-btn + button.co-btn { margin-left:4px; }
 
   /* Filters: the studio's tab style */
   .co-filters { display:flex; gap:2px; flex-wrap:wrap; margin:10px 0 4px; }
@@ -125,7 +139,7 @@
   const checks = {};          // company id → last Check result shown under its row
 
   const STATUS = {
-    verified:   { label: 'verified',       order: 6, hint: 'Confirmed by you. Search surveys this page.' },
+    verified:   { label: 'verified',       order: 6, hint: 'Confirmed by you. Pathways surveys this page.' },
     found:      { label: 'board found',    order: 0, hint: 'A job board answered and matches. Check it, then verify.' },
     page:       { label: 'careers page',   order: 1, hint: 'A careers page with no job board behind it. Check what it yields.' },
     unverified: { label: 'to review',      order: 2, hint: 'A page typed in by hand. Check it, then verify.' },
@@ -183,8 +197,8 @@
     const n = s => active.filter(c => s.includes(statusOf(c))).length;
     const v = n(['verified']), r = n(['found', 'page', 'unverified']), m = n(['website', 'none', 'unknown']);
     document.getElementById('co-summary').innerHTML =
-      `${companiesList.length} companies · <b>${v}</b> verified and surveyed · <b>${r}</b> to review · ${m} with no career page yet` +
-      (companiesList.length - active.length ? ` · ${companiesList.length - active.length} skipped` : '');
+      `${active.length} companies · <b>${v}</b> verified and surveyed · <b>${r}</b> to review · ${m} with no career page yet` +
+      (companiesList.length - active.length ? ` · and ${companiesList.length - active.length} skipped` : '');
   }
 
   function renderFilters() {
@@ -272,8 +286,8 @@
         ${score('score_a', c.score_a)}${score('score_m', c.score_m)}
         <td class="col-score" title="Computed from active listings">${c.score_p ?? '<span class="text-muted">—</span>'}</td>
         <td><div class="co-actions">
-          ${c.career_url ? `<button type="button" class="co-btn" data-act="check" data-id="${c.id}" title="A trial survey: see what Search would collect">Check</button>` : ''}
-          ${c.career_url && !verified ? `<button type="button" class="co-btn co-btn--go" data-act="verify" data-id="${c.id}" title="Confirm this career page; Search surveys it from now on">Verify</button>` : ''}
+          ${c.career_url ? `<button type="button" class="co-btn" data-act="check" data-id="${c.id}" title="A trial survey: see what Pathways would collect">Check</button>` : ''}
+          ${c.career_url && !verified ? `<button type="button" class="co-btn co-btn--go" data-act="verify" data-id="${c.id}" title="Confirm this career page; Pathways surveys it from now on">Verify</button>` : ''}
           ${verified ? `<button type="button" class="co-btn" data-act="unverify" data-id="${c.id}" title="Stop surveying it until checked again">Unverify</button>` : ''}
           <div class="co-more">
             <button type="button" class="co-btn" data-act="rediscover" data-id="${c.id}" title="Look this company up again">Look up</button>
@@ -301,7 +315,7 @@
     const verified = statusOf(c) === 'verified';
     return `<tr class="co-check-row" id="check-${c.id}"><td colspan="8"><div class="co-check">
       <h4>${escH(head)}</h4>
-      ${samples ? `<ul>${samples}</ul>` : `<p class="text-muted">If the page lists jobs, they load in a way Search can't read. Look for a job board link on it and paste that instead.</p>`}
+      ${samples ? `<ul>${samples}</ul>` : `<p class="text-muted">If the page lists jobs, they load in a way Pathways can't read. Look for a job board link on it and paste that instead.</p>`}
       <div class="co-row-actions">
         ${!verified && chk.found ? `<button type="button" class="co-btn co-btn--go" data-act="verify" data-id="${c.id}">Verify this page</button>` : ''}
         ${useBoard}

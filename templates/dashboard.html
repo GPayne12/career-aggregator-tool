@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Overview - Career Aggregator{% endblock %}
+{% block title %}Overview · Pathways{% endblock %}
 
 {#- Overview: every company as a dot, drawn by how far along it is with you.
       position (band, outside in)  closed · watching · preparing · applied · talking
       size                         your interest: advocacy + motivation + matching postings (0–9)
-      filled / hollow              Search surveys its verified career page / not yet verified
+      filled / hollow              Pathways surveys its verified career page / not yet verified
       tangerine pulse              something new this week: a stage change, or fresh matching postings
     Click a dot for the company: turn its interest up (the dot grows), see its
     applications, open Prepare. The List view and the edit dialog carry over
@@ -52,13 +52,13 @@
       <p>Go through the companies behind your saved jobs, applications and follows, one card at a time. Keep or pass each one, then add them all together.</p>
       <button type="button" class="ov-btn ov-btn--solid" id="add-intake-go">Start intake →</button>
     </div>
-    <p class="muted" id="add-intake-off" hidden>Intake runs in the studio. Open Search there to use it.</p>
+    <p class="muted" id="add-intake-off" hidden>Intake runs in the studio. Open Pathways there to use it.</p>
 
     <h3>One company</h3>
     <form id="add-one" class="ov-form">
       <input type="text" id="add-name" placeholder="Company name" required autocomplete="off">
       <input type="url" id="add-url" placeholder="Career page (optional)" autocomplete="off">
-      <p class="muted">Leave the career page empty and Search will look it up.</p>
+      <p class="muted">Leave the career page empty and Pathways will look it up.</p>
       <button type="submit" class="ov-btn ov-btn--solid" id="add-one-go">Add</button>
       <p class="ov-msg" id="add-one-msg" aria-live="polite"></p>
     </form>
@@ -418,11 +418,11 @@
       <h3>APPLICATIONS</h3>
       ${apps.length ? `<ul>${apps.map(a => `<li><div class="app-row">
           <span><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a><br><span class="stage">${STAGE_LABEL[a.status] || a.status}${a.applied_date ? ` · applied ${a.applied_date.slice(0, 10)}` : ''}</span></span>
-          ${a.status !== 'rejected' && embedded ? `<button type="button" class="prep" data-prepare="${a.id}">Prepare →</button>` : ''}
+          ${a.status !== 'rejected' && embedded ? `<button type="button" class="prep" data-prepare="${a.id}">Prepare in Render →</button>` : ''}
         </div></li>`).join('')}</ul>` : `<p class="muted">None yet. <a href="/search">Find a posting →</a></p>`}
 
       <h3>CAREER PAGE</h3>
-      <p>${c.career_url ? `<a href="${esc(c.career_url)}" target="_blank" rel="noopener">${esc(host(c.career_url))} ↗</a> · ` : ''}<span class="muted">${watched(c) ? 'verified; Search surveys it' : c.career_url ? 'waiting for you to verify it' : 'none yet'}</span></p>
+      <p>${c.career_url ? `<a href="${esc(c.career_url)}" target="_blank" rel="noopener">${esc(host(c.career_url))} ↗</a> · ` : ''}<span class="muted">${watched(c) ? 'verified; Pathways surveys it' : c.career_url ? 'waiting for you to verify it' : 'none yet'}</span></p>
       <p class="muted">${c.open_jobs} open postings this week. <a href="/companies/manage">Review in Landscape →</a></p>
 
       <p style="margin-top:18px;display:flex;gap:8px;">
@@ -556,7 +556,7 @@
   async function apiJson(url, opts) {
     const r = await fetch(url, opts);
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(r.status === 409 ? 'Already in Search.' : (Array.isArray(d.detail) ? d.detail.map(e => e.msg).join(', ') : d.detail || `Error ${r.status}`));
+    if (!r.ok) throw new Error(r.status === 409 ? 'Already in Pathways.' : (Array.isArray(d.detail) ? d.detail.map(e => e.msg).join(', ') : d.detail || `Error ${r.status}`));
     return d;
   }
   const FOUND = { verified: 'verified', found: 'a job board was found', page: 'a careers page was found', website: 'only a website was found', none: 'nothing was found yet', unverified: 'its career page waits for you' };
@@ -587,7 +587,7 @@
     try {
       const form = new FormData(); form.append('file', file);
       const d = await apiJson('/api/companies/upload-csv', { method: 'POST', body: form });
-      let m = `<span class="ok">${d.added} added</span>, ${d.skipped} already in Search.`;
+      let m = `<span class="ok">${d.added} added</span>, ${d.skipped} already in Pathways.`;
       if (d.added) m += ` <a href="/companies/manage">Look up their career pages in Landscape →</a>`;
       if (d.errors && d.errors.length) m += ` <span class="err">${esc(d.errors.join('; '))}</span>`;
       say('add-csv-msg', m);
