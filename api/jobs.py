@@ -7,7 +7,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
 from database import get_db
-from models import Job, Company, KeywordProfile, PipelineJob, Setting
+from models import Job, Company, KeywordProfile, PipelineJob, Setting, Removal
+from feedback import Lessons, REASONS, record
 from profile_terms import (facet_terms, has_term, is_engineering, WINDOW_DAYS, ADJACENT, NOT_ADJACENT,
                            adjacent_title, craft_in, sales_only, CORE_TITLE, LIGHT, light_role, bridge_role)
 from regions import keep as keep_region
@@ -162,6 +163,7 @@ def search_jobs(
 
     all_rows = base_query.order_by(Job.posted_date.desc()).all()
     pipeline = {pj.job_id: pj for pj in db.query(PipelineJob).filter(PipelineJob.job_id != None).all()}
+    lessons = Lessons(db.query(Removal).all())
 
     def title_hits(title: str, keywords: List[str]) -> int:
         # Weighted by length: "AI enablement" beats "enablement" when both tracks match.
@@ -175,6 +177,8 @@ def search_jobs(
             continue
         if any(has_term(job.title, t) for t in exclude_terms):
             continue
+        if lessons.removed(job):
+            continue          # removed from Survey: it doesn't come back
         track, via, title_terms = None, None, []
         if want_facets and is_engineering(job.title):
             continue          # engineering titles count for neither track
@@ -204,6 +208,10 @@ def search_jobs(
             continue
         days_old = (datetime.utcnow() - job.posted_date).days if job.posted_date else 0
         score, matched = _fit(job, via, title_terms, can_keywords, want_keywords)
+        if selected_ids:
+            off, why = lessons.penalty(job)
+            if off:
+                score, matched = max(0, score - off), (matched + why)
         pj = pipeline.get(job.id)
         results.append(JobResponse(
             job_id=job.id,
@@ -236,6 +244,24 @@ def search_jobs(
         results = kept
 
     return JobsListResponse(profile=profile_label, total=len(results), results=results)
+
+
+class RemoveBody(BaseModel):
+    reason: str
+
+
+@router.post("/{job_id}/remove")
+def remove_job(job_id: int, body: RemoveBody, db: Session = Depends(get_db)):
+    """Remove a posting from Survey, with why: role, responsibilities or salary."""
+    if body.reason not in REASONS:
+        raise HTTPException(status_code=400, detail=f"reason must be one of {', '.join(REASONS)}")
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    db.add(Removal(job_id=job.id, company_id=job.company_id, title=job.title, url=job.url,
+                   reason=body.reason, learned_json=json.dumps(record(job, body.reason))))
+    db.commit()
+    return {"removed": job.id, "reason": body.reason}
 
 
 @router.get("/{job_id}")

@@ -138,6 +138,21 @@ class Job(Base):
         }
 
 
+class Removal(Base):
+    """A posting removed from Survey, and why: it never comes back, and the reason
+    teaches Survey's scoring (see feedback.py)."""
+    __tablename__ = "removals"
+
+    id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, nullable=True)
+    company_id = Column(Integer, nullable=True)
+    title = Column(String(500), nullable=True)
+    url = Column(String(500), nullable=True)
+    reason = Column(String(30), nullable=False)        # role, responsibilities, salary
+    learned_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

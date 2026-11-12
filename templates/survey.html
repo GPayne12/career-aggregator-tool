@@ -173,8 +173,11 @@
   html body .sv-go:hover { background:var(--surface); }
   .sv-done { font:600 12px var(--mono); color:#1f8a5a; white-space:nowrap; }
   .sv-acts { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
+  html body .sv-rm, html body .sv-why { all:unset; cursor:pointer; font:500 12px var(--mono) !important; color:var(--ink3) !important; padding:4px 8px; border-radius:6px; margin:-1px 0 0 -8px; white-space:nowrap; }
+  html body .sv-why { color:var(--ink) !important; }
+  html body .sv-rm:hover, html body .sv-why:hover { background:var(--surface); }
   .sv-table tr.is-open > td { background:rgba(45,106,79,.06) !important; }
-  .sv-table col.c-act { width:9%; }
+  .sv-table col.c-act { width:12%; }
 
   /* Preview: a posting, read without leaving Survey */
   .sv-over { position:fixed; top:0; right:0; bottom:0; width:min(560px, 100%); z-index:20; box-sizing:border-box; overflow:auto;
@@ -517,6 +520,10 @@
     if (pv) { pv.target = '_blank'; return; }
     const go = e.target.closest('[data-pursue]');
     if (go) return pursue(Number(go.dataset.pursue), go);
+    const rm = e.target.closest('[data-remove]');
+    if (rm) { asking = Number(rm.dataset.remove); return render(); }
+    const why = e.target.closest('[data-why]');
+    if (why) return removeJob(Number(why.dataset.id), why.dataset.why);
     const b = e.target.closest('.sv-save');
     if (!b || b.disabled) return;
     b.disabled = true; b.textContent = '…';
@@ -552,9 +559,39 @@
   function actsFor(j) {
     const done = doneLabel(j);
     if (done) return `<span class="sv-done" title="In the Pipeline">${done}</span>`;
+    if (asking === j.job_id) return whyHtml(j.job_id, 'sv-why');
     return `<button type="button" class="sv-go" data-pursue="${j.job_id}" title="${PURSUE_TIP}">${PURSUE_LABEL}</button>
-        <button type="button" class="sv-save" data-id="${j.job_id}" ${j.is_saved ? 'disabled' : ''} title="Keep it in the pipeline for later">${j.is_saved ? 'In pipeline' : 'Save'}</button>`;
+        <button type="button" class="sv-save" data-id="${j.job_id}" ${j.is_saved ? 'disabled' : ''} title="Keep it in the pipeline for later">${j.is_saved ? 'In pipeline' : 'Save'}</button>
+        <button type="button" class="sv-rm" data-remove="${j.job_id}" title="Remove it from Survey for good, then say why">Remove</button>`;
   }
+
+  // ── Remove, with why ─────────────────────────────────────────────────
+  // Remove turns into the three reasons; one click on a reason removes the posting
+  // for good and teaches Survey (feedback.py). Esc or a click elsewhere keeps it.
+  const WHY = [['role', 'Role'], ['responsibilities', 'Responsibilities'], ['experience', 'Experience']];
+  let asking = null;
+  const whyHtml = (id, cls) => WHY.map(([v, l]) =>
+    `<button type="button" class="${cls}" data-why="${v}" data-id="${id}" title="Remove it: the ${l.toLowerCase()}${v === 'experience' ? ' level' : ''} isn't right">${l}</button>`).join('');
+  async function removeJob(id, reason) {
+    try {
+      const r = await fetch(`/api/jobs/${id}/remove`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+      if (!r.ok) throw new Error(r.status);
+    } catch (err) { asking = null; render(); $('sv-count').textContent = `Couldn't remove it: ${err.message}`; return; }
+    asking = null;
+    const ids = [...document.querySelectorAll('.sv-table tr[data-row]')].map(tr => Number(tr.dataset.row));
+    const i = ids.indexOf(id), next = openId === id ? (ids[i + 1] ?? ids[i - 1]) : null;
+    const wasOpen = openId === id;
+    jobs = jobs.filter(x => x.job_id !== id);
+    render();
+    if (wasOpen) next != null ? openPreview(next) : closePreview();
+  }
+  document.addEventListener('click', e => {
+    if (asking == null || e.target.closest('[data-why], [data-remove]')) return;
+    asking = null; render();
+  });
+  document.addEventListener('keydown', e => {
+    if (asking != null && e.key === 'Escape') { asking = null; render(); }
+  });
 
   // ── Preview and pursue ───────────────────────────────────────────────
   const IN_STUDIO = document.body.classList.contains('embedded');
@@ -578,7 +615,8 @@
         ${doneLabel(j)
           ? `<span class="sv-done">${doneLabel(j)} · in the Pipeline</span>`
           : `<button type="button" class="sv-over-btn sv-over-btn--go" data-pursue="${id}" title="${PURSUE_TIP}">${IN_STUDIO ? 'Pursue in Render →' : 'Pursue'}</button>
-        <button type="button" class="sv-over-btn" data-save="${id}" ${j.is_saved ? 'disabled' : ''}>${j.is_saved ? 'In the pipeline' : 'Save for later'}</button>`}
+        <button type="button" class="sv-over-btn" data-save="${id}" ${j.is_saved ? 'disabled' : ''}>${j.is_saved ? 'In the pipeline' : 'Save for later'}</button>
+        <button type="button" class="sv-over-btn" data-remove-over="${id}" title="Remove it from Survey for good, then say why">Remove</button>`}
         <a class="sv-over-btn" href="${escH(j.url)}" target="_blank" rel="noopener">Open the posting ↗</a>
       </div>
       <p class="sv-over-keys">↑ ↓ the next posting · ${doneLabel(j) ? '' : 'P pursue · '}Esc close</p>
@@ -595,7 +633,7 @@
   }
   document.addEventListener('click', e => {
     if ($('sv-over').hidden) return;
-    if (e.target.closest('#sv-over, [data-preview], [data-pursue], .sv-save')) return;
+    if (e.target.closest('#sv-over, [data-preview], [data-pursue], .sv-save, [data-remove], [data-remove-over], [data-why]')) return;
     closePreview();
   });
   function closePreview() {
@@ -605,6 +643,10 @@
   $('sv-over').addEventListener('click', e => {
     if (e.target.closest('[data-close]')) return closePreview();
     const go = e.target.closest('[data-pursue]'); if (go) return pursue(Number(go.dataset.pursue), go);
+    const rm = e.target.closest('[data-remove-over]');
+    if (rm) { rm.outerHTML = whyHtml(rm.dataset.removeOver, 'sv-over-btn'); return; }
+    const why = e.target.closest('[data-why]');
+    if (why) return removeJob(Number(why.dataset.id), why.dataset.why);
     const sv = e.target.closest('[data-save]');
     if (sv && !sv.disabled) {
       sv.disabled = true;
