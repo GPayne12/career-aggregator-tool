@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Company, Job, KeywordProfile, Setting
 from scraper import JobScraper
+import concurrent.futures as cf
+import multiprocessing as mp
+import survey_worker
 from synonyms import expand_keywords
 from profile_terms import facet_terms, has_term, WINDOW_DAYS
 
@@ -18,6 +21,53 @@ logger = logging.getLogger(__name__)
 _TIMEOUT_PHRASES = ("timeout", "timed out", "time out")
 
 PER_COMPANY_CAP = 25
+
+# The longest one company's read may take. A big Workday board, read 15 pages
+# deep, takes about 40 seconds; a careers page that hands off to a board, a little more.
+COMPANY_DEADLINE = 120
+
+
+class _Cancelled(Exception):
+    pass
+
+
+class _Reader:
+    """Career pages read in one child process, so a stalled read can be killed:
+    at the company deadline, or at once when Stop is pressed."""
+
+    def __init__(self):
+        self.pool = None
+
+    def read(self, url: str):
+        if self.pool is None:
+            self.pool = cf.ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context("spawn"))
+        future = self.pool.submit(survey_worker.read, url)
+        started = time.time()
+        while True:
+            try:
+                return future.result(timeout=1)
+            except cf.TimeoutError:
+                if CANCEL.is_set():
+                    self.kill()
+                    raise _Cancelled()
+                if time.time() - started > COMPANY_DEADLINE:
+                    self.kill()
+                    raise TimeoutError(f"The career page timed out after {COMPANY_DEADLINE} seconds")
+
+    def kill(self):
+        if self.pool is not None:
+            for proc in list((self.pool._processes or {}).values()):
+                proc.kill()
+            self.pool.shutdown(wait=False, cancel_futures=True)
+            self.pool = None
+
+    def close(self):
+        if self.pool is not None:
+            try:
+                self.pool.submit(survey_worker.close).result(timeout=15)
+            except Exception:
+                pass
+            self.kill()
 
 
 def _matches_keywords(title: str, keywords_lower: List[str]) -> bool:
@@ -141,9 +191,9 @@ def iter_scrape() -> Generator[dict, None, None]:
     STATE.clear()
     STATE.update(running=True, index=0, total=0, company=None, started=time.time(), company_started=None, found=0, added=0, errors=0)
     db: Session = SessionLocal()
-    # A board is read at most 15 pages deep (300 postings, newest first); a careers
-    # page gets 30 seconds. A big Workday board otherwise holds the survey for minutes.
+    # Pages are read in a child process (survey_worker); this scraper only parses dates and places.
     scraper = JobScraper(rate_limit_seconds=0.4, max_pages=15, page_timeout_ms=30000)
+    reader = _Reader()
 
     try:
         exclude_terms = _get_exclude_terms(db)
@@ -186,12 +236,12 @@ def iter_scrape() -> Generator[dict, None, None]:
                 continue
 
             try:
-                scraped_jobs = scraper.scrape_career_page(company.career_url)
+                scraped_jobs, truncated = reader.read(company.career_url)
                 added = _save_jobs(db, scraper, company, scraped_jobs, exclude_terms, keywords_lower)
                 # A posting that's no longer on the board has closed. Only when the
                 # board answered in full: an empty, failed or cut-short read says
                 # nothing about closures.
-                if scraped_jobs and not getattr(scraper, "truncated", False):
+                if scraped_jobs and not truncated:
                     still_open = {j['url'].strip() for j in scraped_jobs if j.get('url')}
                     for job in db.query(Job).filter(Job.company_id == company.id, Job.is_active == True).all():
                         if job.url not in still_open:
@@ -205,6 +255,9 @@ def iter_scrape() -> Generator[dict, None, None]:
                        "company": company.name, "found": len(scraped_jobs),
                        "added": added, "timed_out": False, "error": None}
 
+            except _Cancelled:
+                stopped = True
+                break
             except Exception as e:
                 err_str = str(e)
                 is_timeout = any(p in err_str.lower() for p in _TIMEOUT_PHRASES)
@@ -252,6 +305,7 @@ def iter_scrape() -> Generator[dict, None, None]:
     finally:
         STATE["running"] = False
         CANCEL.clear()
+        reader.close()
         scraper.close()
         db.close()
 

@@ -176,7 +176,7 @@ CX_TITLE = re.compile(r"\b(customer|client|member) (?:success|experience|educati
                       r"programs?|outcomes|adoption|journey)\b|\bcx\b", re.I)
 WORKFORCE_TITLE = re.compile(r"\b(workforce (?:transformation|development|readiness)|employee experience|people programs?|"
                              r"associate experience|readiness|digital adoption|knowledge (?:manager|management)|"
-                             r"content (?:strateg(?:y|ist)|author|designer|design|developer)|outcomes manager)\b", re.I)
+                             r"content (?:strateg(?:y|ist)|author|designer|design|developer|development|producer|creator|specialist)|outcomes manager)\b", re.I)
 AI_WORD = re.compile(r"\b(ai|genai|generative|agentic|llms?|artificial intelligence)\b", re.I)
 DESIGN_TITLE = re.compile(r"\b((?:product|ux|experience|service|interaction|learning|content|instructional) designer|"
                           r"design (?:lead|manager|director)|director,? design)\b", re.I)
