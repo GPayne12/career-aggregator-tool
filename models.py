@@ -54,8 +54,16 @@ class KeywordProfile(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(255), unique=True, nullable=False)
     keywords = Column(Text, nullable=False)  # JSON array
+    # A facet of George's one Profile. side: "want" (roles and directions, matched
+    # in posting titles) or "can" (skills, matched in posting text).
+    side = Column(String(10), nullable=True)
+    position = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @property
+    def facet_side(self):
+        return self.side if self.side in ("want", "can") else "want"
 
     def get_keywords(self):
         """Parse keywords from JSON string"""
@@ -73,6 +81,8 @@ class KeywordProfile(Base):
             "id": self.id,
             "name": self.name,
             "keywords": self.get_keywords(),
+            "side": self.facet_side,
+            "position": self.position,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -164,7 +174,7 @@ class PipelineJob(Base):
     checklist_json = Column(Text, nullable=True)
     saved_date = Column(DateTime, default=datetime.utcnow)
     applied_date = Column(DateTime, nullable=True)
-    stage_changed_date = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    stage_changed_date = Column(DateTime, default=datetime.utcnow)  # set when the stage changes, not on every edit
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

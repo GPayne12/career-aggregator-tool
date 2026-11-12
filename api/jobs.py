@@ -8,6 +8,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from database import get_db
 from models import Job, Company, KeywordProfile, PipelineJob, Setting
+from profile_terms import facet_terms
 from synonyms import expand_keywords, SYNONYMS
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -71,6 +72,19 @@ def _score(title: str, keywords: List[str], description: Optional[str] = None) -
     return pct, matched
 
 
+def _profile_score(job, want: List[str], can: List[str]) -> tuple:
+    """What you want leads (the usual title-weighted score); what you can do adds
+    the share of your skills the posting asks for (up to 8 count as all of them)."""
+    w, w_matched = _score(job.title, want, job.description) if want else (0, [])
+    if not can:
+        return w, w_matched
+    text = f"{job.title} {job.description or ''}".lower()
+    c_matched = [kw for kw in can if re.search(r'\b' + re.escape(kw.lower()) + r'\b', text)]
+    c = min(100, round(len(c_matched) / min(len(can), 8) * 100))
+    score = round(.7 * w + .3 * c) if want else c
+    return score, w_matched + [k for k in c_matched if k not in w_matched]
+
+
 @router.get("", response_model=JobsListResponse)
 def search_jobs(
     profile_ids: Optional[str] = Query(None),   # comma-separated IDs, e.g. "1,2,3"
@@ -105,6 +119,8 @@ def search_jobs(
             and_(*[~Job.title.ilike(f"%{term}%") for term in exclude_terms])
         )
 
+    want_keywords: List[str] = []
+    can_keywords: List[str] = []
     # Resolve selected profile IDs (multi-select takes precedence)
     selected_ids: List[int] = []
     if profile_ids:
@@ -117,12 +133,10 @@ def search_jobs(
     profile_label: Optional[str] = None
     if selected_ids:
         profiles = db.query(KeywordProfile).filter(KeywordProfile.id.in_(selected_ids)).all()
-        seen_lower: set = set()
-        for p in profiles:
-            for kw in p.get_keywords():
-                if kw.lower() not in seen_lower:
-                    all_keywords.append(kw)
-                    seen_lower.add(kw.lower())
+        want_keywords = facet_terms(db, "want", selected_ids)
+        can_keywords = facet_terms(db, "can", selected_ids)
+        # Postings must match something you want; with no want facet chosen, something you can do.
+        all_keywords = want_keywords or can_keywords
         if len(profiles) == 1:
             profile_label = profiles[0].name
         elif profiles:
@@ -162,7 +176,7 @@ def search_jobs(
     results = []
     for job, company_name in rows:
         days_old = (datetime.utcnow() - job.posted_date).days if job.posted_date else 0
-        score, matched = _score(job.title, all_keywords, job.description)
+        score, matched = _profile_score(job, want_keywords, can_keywords)
         results.append(JobResponse(
             job_id=job.id,
             company=company_name,

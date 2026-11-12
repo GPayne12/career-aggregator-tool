@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 from database import get_db
+from datetime import datetime, timedelta
+from sqlalchemy import and_, or_
 from models import KeywordProfile, Job
 from synonyms import SYNONYMS
 
@@ -18,17 +20,30 @@ RESUME_SECTION_HEADERS = {"PROFESSIONAL SUMMARY", "EXPERIENCE", "SKILLS", "EDUCA
 class KeywordProfileCreate(BaseModel):
     name: str
     keywords: List[str]
+    side: str = "want"
 
 
 class KeywordProfileUpdate(BaseModel):
     name: Optional[str] = None
     keywords: Optional[List[str]] = None
+    side: Optional[str] = None
 
 
 class KeywordProfileResponse(BaseModel):
     id: int
     name: str
     keywords: List[str]
+    side: str = "want"
+
+
+def _side(value: Optional[str]) -> str:
+    if value not in ("want", "can"):
+        raise HTTPException(status_code=400, detail="side must be 'want' or 'can'")
+    return value
+
+
+def _out(p: KeywordProfile) -> KeywordProfileResponse:
+    return KeywordProfileResponse(id=p.id, name=p.name, keywords=p.get_keywords(), side=p.facet_side)
 
 
 def _parse_resume_pdf(path: str) -> dict:
@@ -86,11 +101,26 @@ async def seed_from_resume(file: UploadFile = File(...)):
 
 @router.get("", response_model=List[KeywordProfileResponse])
 def list_profiles(db: Session = Depends(get_db)):
-    profiles = db.query(KeywordProfile).all()
-    return [
-        KeywordProfileResponse(id=p.id, name=p.name, keywords=p.get_keywords())
-        for p in profiles
-    ]
+    """The Profile's facets, in order."""
+    return [_out(p) for p in db.query(KeywordProfile).order_by(KeywordProfile.position, KeywordProfile.id).all()]
+
+
+@router.get("/summary")
+def profile_summary(db: Session = Depends(get_db)):
+    """The Profile page in one call: each facet with how many open postings from
+    the last week it matches (want: in the title; can: anywhere in the posting)."""
+    week = datetime.utcnow() - timedelta(days=7)
+    jobs = [((t or "").lower(), (d or "").lower()) for t, d in db.query(Job.title, Job.description).filter(
+        Job.is_active == True, or_(Job.posted_date >= week, and_(Job.posted_date == None, Job.fetched_at >= week))).all()]
+    facets = []
+    for p in db.query(KeywordProfile).order_by(KeywordProfile.position, KeywordProfile.id).all():
+        kws = [k.lower() for k in p.get_keywords()]
+        if p.facet_side == "want":
+            n = sum(1 for t, _ in jobs if any(k in t for k in kws))
+        else:
+            n = sum(1 for t, d in jobs if any(re.search(r"\b" + re.escape(k) + r"\b", t + " " + d) for k in kws))
+        facets.append({**_out(p).dict(), "open": n})
+    return {"facets": facets, "open_postings": len(jobs)}
 
 
 @router.get("/{profile_id}/stats")
@@ -123,7 +153,7 @@ def get_profile(profile_id: int, db: Session = Depends(get_db)):
     profile = db.query(KeywordProfile).filter(KeywordProfile.id == profile_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return KeywordProfileResponse(id=profile.id, name=profile.name, keywords=profile.get_keywords())
+    return _out(profile)
 
 
 @router.post("", response_model=KeywordProfileResponse, status_code=201)
@@ -134,12 +164,12 @@ def create_profile(profile: KeywordProfileCreate, db: Session = Depends(get_db))
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Profile '{profile.name}' already exists",
         )
-    db_profile = KeywordProfile(name=profile.name)
+    db_profile = KeywordProfile(name=profile.name, side=_side(profile.side))
     db_profile.set_keywords(profile.keywords)
     db.add(db_profile)
     db.commit()
     db.refresh(db_profile)
-    return KeywordProfileResponse(id=db_profile.id, name=db_profile.name, keywords=db_profile.get_keywords())
+    return _out(db_profile)
 
 
 @router.put("/{profile_id}", response_model=KeywordProfileResponse)
@@ -163,10 +193,12 @@ def update_profile(profile_id: int, profile: KeywordProfileUpdate, db: Session =
 
     if profile.keywords is not None:
         db_profile.set_keywords(profile.keywords)
+    if profile.side is not None:
+        db_profile.side = _side(profile.side)
 
     db.commit()
     db.refresh(db_profile)
-    return KeywordProfileResponse(id=db_profile.id, name=db_profile.name, keywords=db_profile.get_keywords())
+    return _out(db_profile)
 
 
 @router.delete("/{profile_id}", status_code=204)

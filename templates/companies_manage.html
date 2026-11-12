@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}Companies - Career Aggregator{% endblock %}
+{% block title %}Landscape - Career Aggregator{% endblock %}
 
 {% block content %}
 {#- Companies: where each company's website and career page are reviewed.
-    Search only scrapes a company once its career page is verified here.
+    Search only surveys a company once its career page is verified here.
     Editing works like the portfolio studio's edit-on-page: hold ⌥ (or switch
     on ✎ Edit) to see what's editable, click it, Enter saves, Esc cancels. -#}
 <div class="co-page">
 <div class="co-head">
   <div>
-    <h1>Companies</h1>
+    <h1>Landscape</h1>
     <p class="text-muted co-summary" id="co-summary">Loading…</p>
   </div>
   <div class="co-head-actions">
@@ -24,28 +24,7 @@
 
 <div id="companies-list"></div>
 
-<details class="co-add">
-  <summary>Add companies by hand</summary>
-  <div class="co-add-grid">
-    <div>
-      <h3>ADD A COMPANY</h3>
-      <p>Leave the career page empty and Search will look it up.</p>
-      <form id="add-company-form">
-        <input type="text" id="company-name" name="name" placeholder="Company name" required>
-        <input type="url" id="company-url" name="career_url" placeholder="Career page (optional)">
-        <button type="submit" class="co-btn co-btn--solid" id="add-btn">Add</button>
-        <div id="add-status" class="co-msg"></div>
-      </form>
-    </div>
-    <div>
-      <h3>IMPORT A CSV</h3>
-      <p>A <code>name</code> column; <code>career_url</code> is optional.</p>
-      <input type="file" id="csv-file" accept=".csv">
-      <button type="button" class="co-btn co-btn--line" onclick="uploadCSV()">Upload</button>
-      <div id="csv-status" class="co-msg"></div>
-    </div>
-  </div>
-</details>
+<p class="co-addnote">To add companies, use <a href="/#add">+ Add companies</a> on the Overview.</p>
 </div>
 
 <style>
@@ -134,15 +113,7 @@
   @keyframes co-flash { 0%, 40% { outline:2px solid var(--tang); outline-offset:6px; } 100% { outline-color:transparent; } }
 
   /* Adding by hand: two plain columns */
-  .co-add { margin-top:28px; border-top:1px solid var(--line); padding-top:12px; }
-  .co-add summary { cursor:pointer; font:500 12px var(--mono); color:var(--ink2); }
-  .co-add-grid { display:grid; grid-template-columns:1fr 1fr; gap:32px; margin-top:14px; }
-  .co-add h3 { font:600 12px var(--mono) !important; color:var(--ink3) !important; margin:0 0 6px !important; }
-  .co-add p { font-size:13px; color:var(--ink3); margin:0 0 8px; }
-  .co-add input[type=text], .co-add input[type=url] { width:100%; box-sizing:border-box; margin:0 0 6px !important; font:15px var(--serif) !important;
-         padding:7px 10px !important; border:1px solid var(--line) !important; border-radius:6px !important; background:var(--paper) !important; }
-  .co-add .co-msg { font-size:13px; margin-top:6px; }
-  @media (max-width: 760px) { .co-add-grid { grid-template-columns:1fr; } }
+  .co-page p.co-addnote { margin-top:28px; border-top:1px solid var(--line); padding-top:12px; font-size:13px; color:var(--ink3); }
 </style>
 
 <script>
@@ -154,7 +125,7 @@
   const checks = {};          // company id → last Check result shown under its row
 
   const STATUS = {
-    verified:   { label: 'verified',       order: 6, hint: 'Confirmed by you. Search scrapes this page.' },
+    verified:   { label: 'verified',       order: 6, hint: 'Confirmed by you. Search surveys this page.' },
     found:      { label: 'board found',    order: 0, hint: 'A job board answered and matches. Check it, then verify.' },
     page:       { label: 'careers page',   order: 1, hint: 'A careers page with no job board behind it. Check what it yields.' },
     unverified: { label: 'to review',      order: 2, hint: 'A page typed in by hand. Check it, then verify.' },
@@ -212,7 +183,7 @@
     const n = s => active.filter(c => s.includes(statusOf(c))).length;
     const v = n(['verified']), r = n(['found', 'page', 'unverified']), m = n(['website', 'none', 'unknown']);
     document.getElementById('co-summary').innerHTML =
-      `${companiesList.length} companies · <b>${v}</b> verified and scraped · <b>${r}</b> to review · ${m} with no career page yet` +
+      `${companiesList.length} companies · <b>${v}</b> verified and surveyed · <b>${r}</b> to review · ${m} with no career page yet` +
       (companiesList.length - active.length ? ` · ${companiesList.length - active.length} skipped` : '');
   }
 
@@ -301,9 +272,9 @@
         ${score('score_a', c.score_a)}${score('score_m', c.score_m)}
         <td class="col-score" title="Computed from active listings">${c.score_p ?? '<span class="text-muted">—</span>'}</td>
         <td><div class="co-actions">
-          ${c.career_url ? `<button type="button" class="co-btn" data-act="check" data-id="${c.id}" title="Trial scrape: see what Search would collect">Check</button>` : ''}
-          ${c.career_url && !verified ? `<button type="button" class="co-btn co-btn--go" data-act="verify" data-id="${c.id}" title="Confirm this career page; Search scrapes it from now on">Verify</button>` : ''}
-          ${verified ? `<button type="button" class="co-btn" data-act="unverify" data-id="${c.id}" title="Stop scraping until checked again">Unverify</button>` : ''}
+          ${c.career_url ? `<button type="button" class="co-btn" data-act="check" data-id="${c.id}" title="A trial survey: see what Search would collect">Check</button>` : ''}
+          ${c.career_url && !verified ? `<button type="button" class="co-btn co-btn--go" data-act="verify" data-id="${c.id}" title="Confirm this career page; Search surveys it from now on">Verify</button>` : ''}
+          ${verified ? `<button type="button" class="co-btn" data-act="unverify" data-id="${c.id}" title="Stop surveying it until checked again">Unverify</button>` : ''}
           <div class="co-more">
             <button type="button" class="co-btn" data-act="rediscover" data-id="${c.id}" title="Look this company up again">Look up</button>
             <button type="button" class="co-btn" data-act="skip" data-id="${c.id}">${c.is_skipped ? 'Unskip' : 'Skip'}</button>
@@ -315,7 +286,7 @@
   }
 
   function checkRowHtml(c, chk) {
-    if (chk === 'running') return `<tr class="co-check-row" id="check-${c.id}"><td colspan="8"><div class="co-check"><h4>Checking ${escH(shortUrl(c.career_url))}…</h4><p class="text-muted">A trial scrape of the first pages. Careers pages that need a browser take up to half a minute.</p></div></td></tr>`;
+    if (chk === 'running') return `<tr class="co-check-row" id="check-${c.id}"><td colspan="8"><div class="co-check"><h4>Checking ${escH(shortUrl(c.career_url))}…</h4><p class="text-muted">A trial survey of the first pages. Careers pages that need a browser take up to half a minute.</p></div></td></tr>`;
     if (chk.error && !chk.found) {
       return `<tr class="co-check-row" id="check-${c.id}"><td colspan="8"><div class="co-check"><h4>Couldn't read this page</h4><p class="co-warn">${escH(chk.error)}</p>
         <div class="co-row-actions"><button type="button" class="co-btn" data-act="close-check" data-id="${c.id}">Close</button></div></div></td></tr>`;
@@ -326,7 +297,7 @@
       : `Nothing found on this page · ${chk.seconds}s`;
     const samples = (chk.samples || []).map(s => `<li><a href="${escH(s.url)}" target="_blank" rel="noopener">${escH(s.title)}</a>${s.location ? ` <span class="text-muted">· ${escH(s.location)}</span>` : ''}</li>`).join('');
     const useBoard = chk.via_page && chk.board_url
-      ? `<button type="button" class="co-btn co-btn--go" data-act="use-board" data-id="${c.id}" data-url="${escH(chk.board_url)}" title="Scrape the board directly: faster, and it lists every posting">Use the ${escH(name)} board instead</button>` : '';
+      ? `<button type="button" class="co-btn co-btn--go" data-act="use-board" data-id="${c.id}" data-url="${escH(chk.board_url)}" title="Survey the board directly: faster, and it lists every posting">Use the ${escH(name)} board instead</button>` : '';
     const verified = statusOf(c) === 'verified';
     return `<tr class="co-check-row" id="check-${c.id}"><td colspan="8"><div class="co-check">
       <h4>${escH(head)}</h4>
@@ -451,41 +422,6 @@
     };
     es.onerror = () => { es.close(); btn.disabled = false; out.textContent = 'The lookup stopped. Run it again to carry on; finished ones are kept.'; loadCompanies(); };
   });
-
-  // ── Add by hand ──────────────────────────────────────────────────────────
-  document.getElementById('add-company-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const name = document.getElementById('company-name').value.trim();
-    const career_url = document.getElementById('company-url').value.trim() || null;
-    const btn = document.getElementById('add-btn'), status = document.getElementById('add-status');
-    btn.disabled = true; btn.textContent = 'Adding…'; status.innerHTML = '';
-    try {
-      let c = await api('', { method: 'POST', body: JSON.stringify({ name, career_url }) });
-      if (!career_url) { status.textContent = 'Added. Looking it up…'; c = await api(`/${c.id}/discover`, { method: 'POST' }); }
-      status.innerHTML = `<span style="color:#2d6a4f">Added ${escH(c.name)}: ${STATUS[statusOf(c)].label}.</span>`;
-      document.getElementById('company-name').value = ''; document.getElementById('company-url').value = '';
-      await loadCompanies();
-    } catch (err) { status.innerHTML = `<span style="color:#b42318">${escH(err.message)}</span>`; }
-    finally { btn.disabled = false; btn.textContent = 'Add'; }
-  });
-
-  function uploadCSV() {
-    const fileInput = document.getElementById('csv-file');
-    const status = document.getElementById('csv-status');
-    if (!fileInput.files.length) { status.innerHTML = '<span style="color:#b42318">Please select a CSV file first.</span>'; return; }
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-    status.innerHTML = '<span class="text-muted">Uploading…</span>';
-    fetch('/api/companies/upload-csv', { method: 'POST', body: formData })
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
-      .then(({ ok, data }) => {
-        if (!ok) throw new Error(Array.isArray(data.detail) ? data.detail.map(e => e.msg).join(', ') : (data.detail || 'Server error'));
-        let msg = `<strong>${data.added}</strong> added, <strong>${data.skipped}</strong> skipped.`;
-        if (data.errors && data.errors.length) msg += ` <span style="color:#b42318">Errors: ${data.errors.join('; ')}</span>`;
-        status.innerHTML = msg; fileInput.value = ''; loadCompanies();
-      })
-      .catch(e => { status.innerHTML = `<span style="color:#b42318">Upload failed: ${e.message}</span>`; });
-  }
 
   document.addEventListener('DOMContentLoaded', loadCompanies);
 </script>

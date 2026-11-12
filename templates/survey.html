@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+
+{% block title %}Survey - Career Aggregator{% endblock %}
+
+{#- Survey (was Scrape): reads every verified career page for new postings and
+    lists what's open from the last week. Same hand as Companies: paper,
+    hairlines, Source Serif to read, JetBrains Mono for labels and controls,
+    forest green as the one accent. The everyday controls sit in the third bar;
+    the rarer ones (profiles, region, words to leave out) open under it. -#}
+
+{% block bar %}
+<nav class="bar3" aria-label="Survey">
+  <button type="button" class="bar3-go" id="sv-run" title="Read every verified career page for new postings">Survey now</button>
+  <span class="bar3-note" id="sv-last"></span>
+  <span class="bar3-spacer"></span>
+  <div class="bar3-tabs" role="tablist" aria-label="Where" id="sv-where">
+    <button type="button" class="bar3-item is-on" data-value="" role="tab" aria-selected="true">All</button>
+    <button type="button" class="bar3-item" data-value="remote" role="tab" aria-selected="false">Remote</button>
+    <button type="button" class="bar3-item" data-value="hybrid" role="tab" aria-selected="false">Hybrid</button>
+    <button type="button" class="bar3-item" data-value="on_site" role="tab" aria-selected="false">On-site</button>
+  </div>
+  <label class="bar3-find"><span class="sr">Find a title or company</span>
+    <input id="sv-find" type="search" placeholder="Find a title or company" autocomplete="off"></label>
+  <button type="button" class="bar3-item" id="sv-refine-toggle" aria-expanded="false" aria-controls="sv-refine">Refine<span class="bar3-dot" id="sv-refine-dot" hidden></span></button>
+</nav>
+<section class="sv-refine" id="sv-refine" hidden aria-label="Refine">
+  <div class="sv-refine-row">
+    <span class="sv-label">Rank by</span>
+    <div class="sv-chips" id="sv-profiles"><span class="sv-muted">Loading…</span></div>
+  </div>
+  <div class="sv-refine-row">
+    <span class="sv-label">Region</span>
+    <div class="sv-chips" id="sv-region">
+      <button type="button" class="sv-chip is-on" data-value="">Anywhere</button>
+      <button type="button" class="sv-chip" data-value="us">Inside the US</button>
+      <button type="button" class="sv-chip" data-value="near_philly">Near Philadelphia</button>
+      <button type="button" class="sv-chip" data-value="outside">Outside the US</button>
+    </div>
+  </div>
+  <div class="sv-refine-row">
+    <span class="sv-label">Leave out</span>
+    <div class="sv-chips" id="sv-exclude"></div>
+    <form class="sv-add" id="sv-exclude-form">
+      <input type="text" id="sv-exclude-input" placeholder="a word in the title" autocomplete="off">
+      <button type="submit" class="sv-btn">Add</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
+
+{% block content %}
+<div class="sv-page">
+  <div class="sv-head">
+    <div>
+      <h1>Survey</h1>
+      <p class="sv-summary" id="sv-summary">Loading…</p>
+    </div>
+    <button type="button" class="sv-btn" id="sv-export" title="Download the postings shown, as a spreadsheet">Export CSV</button>
+  </div>
+
+  <div class="sv-progress" id="sv-progress" hidden>
+    <div class="sv-track"><div class="sv-fill" id="sv-fill"></div></div>
+    <p class="sv-progress-label" id="sv-progress-label"></p>
+    <div class="sv-report" id="sv-report"></div>
+  </div>
+
+  <p class="sv-count" id="sv-count"></p>
+  <div id="sv-list"></div>
+</div>
+
+<style>
+  .sv-page, .bar3, .sv-refine {
+    --ink:#1a1916; --ink2:#5c5a55; --ink3:#8a857c; --line:#d4cfc7; --hair:#e9e5dd; --paper:#fffefb; --bg:#faf9f7; --surface:#f0ede7;
+    --ok:#2d6a4f; --warn:#b5642a; --miss:#b42318; --tang:#c47f00;
+    --mono:'JetBrains Mono', ui-monospace, Menlo, monospace; --serif:'Source Serif 4', Georgia, serif; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+
+  /* Buttons: 'html body' lifts these over the app's embedded rule that paints every button green. */
+  /* ── Third bar, as on the Overview ─────────────────────────────────── */
+  .bar3 { display:flex; align-items:center; gap:4px; padding:7px 20px; min-height:44px; box-sizing:border-box; flex-wrap:wrap;
+          background:var(--bg); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+  .bar3 button { margin:0; }
+  html body .bar3-item { all:unset; box-sizing:border-box; cursor:pointer; padding:6px 12px; border-radius:6px; position:relative;
+               font:500 12px var(--mono) !important; color:var(--ink2) !important; }
+  html body .bar3-item:hover { background:var(--surface); }
+  html body .bar3-item.is-on, html body .bar3-item[aria-expanded="true"] { color:var(--ok) !important; background:color-mix(in srgb, var(--ok) 10%, transparent); }
+  html body .bar3-go { all:unset; box-sizing:border-box; cursor:pointer; padding:7px 14px; border-radius:999px; white-space:nowrap;
+             font:600 12px var(--mono) !important; background:var(--ok); color:#fff !important; }
+  html body .bar3-go:hover { background:#235840; }
+  html body .bar3-go:disabled { opacity:.55; cursor:default; }
+  .bar3-note { font:12px var(--mono); color:var(--ink3); margin-left:8px; white-space:nowrap; }
+  .bar3-spacer { flex:1; }
+  .bar3-tabs { display:flex; gap:2px; margin-right:8px; }
+  .bar3-find input { width:220px; margin:0 6px 0 0; padding:5px 10px !important; font:12px var(--mono) !important; box-sizing:border-box;
+                     border:1px solid var(--line) !important; border-radius:999px !important; background:var(--paper) !important; height:auto !important; }
+  .bar3-dot { position:absolute; top:5px; right:5px; width:6px; height:6px; border-radius:50%; background:var(--tang); }
+
+  /* ── Refine: opens under the bar ───────────────────────────────────── */
+  .sv-refine { background:var(--bg); border-bottom:1px solid var(--line); padding:6px 20px 10px; position:sticky; top:44px; z-index:4; }
+  .sv-refine-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:5px 0; }
+  .sv-label { font:600 12px var(--mono); color:var(--ink3); width:84px; flex:none; }
+  html body .sv-chips { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
+  html body .sv-chip { all:unset; box-sizing:border-box; cursor:pointer; padding:4px 10px; border-radius:999px; border:1px solid var(--line);
+             font:500 12px var(--mono) !important; color:var(--ink2) !important; background:var(--paper); }
+  html body .sv-chip:hover { border-color:var(--ink3); }
+  html body .sv-chip.is-on { border-color:var(--ok); color:var(--ok) !important; background:color-mix(in srgb, var(--ok) 10%, var(--paper)); }
+  .sv-term { display:inline-flex; align-items:center; gap:2px; padding:3px 4px 3px 10px; border-radius:999px; background:var(--surface);
+             font:500 12px var(--mono); color:var(--ink2); }
+  html body .sv-term button { all:unset; cursor:pointer; padding:0 6px; color:var(--ink3); font:12px var(--mono); }
+  html body .sv-term button:hover { color:var(--miss); }
+  .sv-add { display:flex; gap:4px; align-items:center; margin:0; }
+  .sv-add input { width:170px; margin:0 !important; padding:4px 10px !important; font:12px var(--mono) !important; height:auto !important;
+                  border:1px solid var(--line) !important; border-radius:999px !important; background:var(--paper) !important; }
+  .sv-muted { font:12px var(--mono); color:var(--ink3); }
+
+  /* ── Page ──────────────────────────────────────────────────────────── */
+  .sv-page { font-family:var(--serif); color:var(--ink); max-width:72rem; margin:0 auto; padding:8px 0 40px; }
+  .sv-page a { color:var(--ok); text-decoration:none; }
+  .sv-page a:hover { text-decoration:underline; }
+  .sv-head { display:flex; justify-content:space-between; align-items:flex-end; gap:1rem; flex-wrap:wrap; padding-bottom:14px; border-bottom:1px solid var(--line); }
+  .sv-head h1 { font:600 24px/1.2 var(--serif) !important; margin:0; color:var(--ink); }
+  .sv-page p.sv-summary { margin:4px 0 0; font-size:15px; color:var(--ink2); }
+  body.embedded .container .sv-page .sv-summary a { font-size:15px !important; }
+  .sv-summary b { color:var(--ink); font-weight:600; }
+  html body .sv-btn { all:unset; box-sizing:border-box; cursor:pointer; font:500 12px/1 var(--mono) !important; color:var(--ink2) !important;
+            padding:8px 14px; border-radius:999px; border:1px solid var(--line); background:var(--paper); white-space:nowrap; }
+  html body .sv-btn:hover { background:var(--surface); color:var(--ink) !important; }
+  html body .sv-btn:disabled { opacity:.45; cursor:default; }
+  html body .sv-add .sv-btn { padding:5px 10px; }
+
+  .sv-progress { padding:14px 0 4px; }
+  .sv-track { height:2px; background:var(--hair); overflow:hidden; }
+  .sv-fill { height:100%; width:0; background:var(--ok); transition:width .3s ease; }
+  .sv-fill.is-done { background:var(--ink3); }
+  .sv-page p.sv-progress-label { margin:8px 0 0; font:12px var(--mono); color:var(--ink2); }
+  .sv-progress-label b { color:var(--ink); }
+  .sv-report { font-size:15px; color:var(--ink2); }
+  .sv-report p { margin:6px 0 0; }
+  .sv-report ul { margin:4px 0 0 18px; padding:0; }
+  .sv-warn { color:var(--warn); }
+  .sv-err { color:var(--miss); }
+
+  .sv-page p.sv-count { margin:14px 0 0; font:12px var(--mono); color:var(--ink3); }
+  .sv-empty { margin:24px 0; color:var(--ink3); font-style:italic; font-size:15px; }
+
+  table.sv-table { width:100%; table-layout:fixed; border-collapse:collapse; margin:0; background:none !important; border:0 !important; box-shadow:none !important; }
+  .sv-table col.c-title { width:auto; } .sv-table col.c-co { width:18%; } .sv-table col.c-loc { width:20%; }
+  .sv-table col.c-age { width:8%; } .sv-table col.c-match { width:10%; } .sv-table col.c-act { width:8%; }
+  .sv-table thead, .sv-table th { background:none !important; }
+  .sv-table th { text-align:left; white-space:nowrap; font:600 12px var(--mono) !important; color:var(--ink3) !important; padding:12px 8px 8px !important;
+                 border:0 !important; border-bottom:1px solid var(--line) !important; text-transform:none !important; letter-spacing:.02em; cursor:pointer; user-select:none; }
+  .sv-table th.no-sort { cursor:default; }
+  .sv-table th .ind { color:#bdb7ac; margin-left:3px; }
+  .sv-table td { vertical-align:top; padding:12px 8px !important; border:0 !important; border-bottom:1px solid var(--hair) !important; font-size:15px; overflow:hidden; }
+  .sv-table tr:hover > td { background:rgba(240,237,231,.45); }
+  body .sv-page a.sv-title, body.embedded .container .sv-page a.sv-title { font-size:15px !important; font-weight:600; color:var(--ink) !important; }
+  body .sv-page a.sv-title:hover { color:var(--ok) !important; }
+  .sv-kw { display:block; font:12px var(--mono); color:var(--ink3); margin-top:3px; }
+  .sv-co { color:var(--ink); }
+  .sv-loc, .sv-age { color:var(--ink2); }
+  .sv-loc { overflow:hidden; text-overflow:ellipsis; }
+  .sv-page .sv-table td.sv-age { font:12px var(--mono); white-space:nowrap; padding-top:15px !important; }
+  .sv-page .sv-table td.sv-match { font:12px var(--mono); color:var(--ink2); white-space:nowrap; padding-top:15px !important; }
+  .sv-match i { display:inline-block; height:2px; background:var(--ok); vertical-align:middle; margin-right:6px; }
+  html body .sv-save { all:unset; cursor:pointer; font:500 12px var(--mono) !important; color:var(--ok) !important; padding:4px 8px; border-radius:6px; margin:-1px 0 0 -8px; }
+  html body .sv-save:hover { background:var(--surface); }
+  html body .sv-save:disabled { color:var(--ink3) !important; cursor:default; background:none; }
+
+  @media (max-width: 56em) {
+    .bar3-find input { width:160px; }
+    .sv-table col.c-loc, .sv-table col.c-match { width:0; }
+    .sv-table .c-hide { display:none; }
+  }
+</style>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const state = { profiles: new Set(), where: '', region: '', find: '', sort: { col: null, dir: 1 } };
+  let jobs = [], loaded = false, profilesCache = [];
+
+  function escH(s) {
+    return (s == null ? '' : String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  // ── Summary: what's open, what's verified, what waits ────────────────
+  async function loadSummary() {
+    try {
+      const s = await (await fetch('/api/scrape/summary')).json();
+      const wait = s.held ? ` <a href="/companies/manage">${plural(s.held, 'company waits', 'companies wait')} for you to verify a career page →</a>` : '';
+      $('sv-summary').innerHTML = `Postings from the last week on <b>${s.verified}</b> verified career pages.${wait}`;
+      $('sv-last').textContent = s.last_run ? 'Last surveyed ' + when(s.last_run) : 'Not surveyed yet';
+    } catch { $('sv-summary').textContent = ''; }
+  }
+  function when(iso) {
+    const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+    const days = Math.floor((Date.now() - d) / 864e5);
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (days < 1 && new Date().getDate() === d.getDate()) return 'today, ' + time;
+    if (days < 2) return 'yesterday, ' + time;
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  // ── Survey ───────────────────────────────────────────────────────────
+  function runSurvey() {
+    const btn = $('sv-run');
+    btn.disabled = true; btn.textContent = 'Surveying…';
+    $('sv-progress').hidden = false;
+    $('sv-fill').className = 'sv-fill'; $('sv-fill').style.width = '0';
+    $('sv-report').innerHTML = '';
+    const label = $('sv-progress-label');
+    label.textContent = 'Starting…';
+    const timedOut = [], failed = [];
+    let held = 0;
+    const done = () => { btn.disabled = false; btn.textContent = 'Survey now'; };
+    const source = new EventSource('/api/scrape/stream');
+    source.onmessage = (e) => {
+      const d = JSON.parse(e.data);
+      if (d.type === 'start') {
+        held = d.held || 0;
+        label.textContent = `0 of ${d.total} verified companies`;
+      } else if (d.type === 'progress') {
+        $('sv-fill').style.width = Math.round(d.index / d.total * 100) + '%';
+        label.innerHTML = `${d.index} of ${d.total} · <b>${escH(d.company)}</b>`;
+        if (d.timed_out) timedOut.push(d.company);
+        else if (d.error) failed.push([d.company, d.error]);
+      } else if (d.type === 'done') {
+        source.close(); done();
+        $('sv-fill').style.width = '100%'; $('sv-fill').classList.add('is-done');
+        label.innerHTML = `Done. <b>${d.total_added}</b> new · <b>${d.closed || 0}</b> closed · <b>${d.pruned}</b> gone quiet · <b>${d.errors}</b> ${d.errors === 1 ? 'problem' : 'problems'}`;
+        let r = '';
+        if (timedOut.length) r += `<p class="sv-warn">${plural(timedOut.length, 'career page', 'career pages')} timed out; check ${timedOut.length === 1 ? 'it' : 'them'} in Landscape:</p><ul>${timedOut.map(c => `<li>${escH(c)}</li>`).join('')}</ul>`;
+        if (failed.length) r += `<p class="sv-warn">${plural(failed.length, 'career page', 'career pages')} couldn't be read:</p><ul>${failed.map(([c, m]) => `<li>${escH(c)} <span class="sv-muted">${escH(m.slice(0, 120))}</span></li>`).join('')}</ul>`;
+        if (held) r += `<p>${plural(held, 'more company waits', 'more companies wait')} for a verified career page. <a href="/companies/manage">Review them in Landscape →</a></p>`;
+        $('sv-report').innerHTML = r;
+        loadSummary(); loadJobs();
+      } else if (d.type === 'error') {
+        source.close(); done();
+        label.innerHTML = `<span class="sv-err">The survey stopped: ${escH(d.message)}</span>`;
+      }
+    };
+    source.onerror = () => {
+      source.close(); done();
+      label.innerHTML = '<span class="sv-err">Lost the connection to Search. Check its log in the dev dashboard.</span>';
+    };
+  }
+  $('sv-run').addEventListener('click', runSurvey);
+
+  // ── Refine ───────────────────────────────────────────────────────────
+  $('sv-refine-toggle').addEventListener('click', (e) => {
+    const open = $('sv-refine').hidden;
+    $('sv-refine').hidden = !open;
+    e.currentTarget.setAttribute('aria-expanded', String(open));
+  });
+  function markRefined() {
+    $('sv-refine-dot').hidden = !(state.profiles.size || state.region);
+  }
+
+  async function loadProfiles() {
+    profilesCache = await (await fetch('/api/profiles')).json();
+    const box = $('sv-profiles');
+    box.innerHTML = profilesCache.length
+      ? `<button type="button" class="sv-chip" data-id="all" title="Every facet: what you want leads, what you can do lifts">Your whole profile</button>`
+        + profilesCache.map(p => `<button type="button" class="sv-chip" data-id="${p.id}" title="${p.side === 'can' ? 'What you can do' : 'What you want'}">${escH(p.name)}</button>`).join('')
+      : '<span class="sv-muted">Your profile has no facets yet. <a href="/profile">Add some →</a></span>';
+  }
+  $('sv-profiles').addEventListener('click', (e) => {
+    const b = e.target.closest('.sv-chip'); if (!b) return;
+    if (b.dataset.id === 'all') {
+      const every = profilesCache.every(p => state.profiles.has(p.id));
+      state.profiles = new Set(every ? [] : profilesCache.map(p => p.id));
+    } else {
+      const id = Number(b.dataset.id);
+      state.profiles.has(id) ? state.profiles.delete(id) : state.profiles.add(id);
+    }
+    const every = profilesCache.length && profilesCache.every(p => state.profiles.has(p.id));
+    $('sv-profiles').querySelectorAll('.sv-chip').forEach(x => x.classList.toggle('is-on', x.dataset.id === 'all' ? every : state.profiles.has(Number(x.dataset.id))));
+    markRefined(); loadJobs();
+  });
+
+  $('sv-region').addEventListener('click', (e) => {
+    const b = e.target.closest('.sv-chip'); if (!b) return;
+    state.region = b.dataset.value;
+    $('sv-region').querySelectorAll('.sv-chip').forEach(x => x.classList.toggle('is-on', x === b));
+    markRefined(); render();
+  });
+
+  function renderTerms(terms) {
+    $('sv-exclude').innerHTML = terms.length
+      ? terms.map(t => `<span class="sv-term">${escH(t)}<button type="button" data-term="${escH(t)}" title="Stop leaving this out" aria-label="Remove ${escH(t)}">×</button></span>`).join('')
+      : '<span class="sv-muted">Nothing left out</span>';
+  }
+  async function loadTerms() { renderTerms(await (await fetch('/api/settings/exclude-terms')).json()); }
+  $('sv-exclude-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = $('sv-exclude-input'), term = input.value.trim();
+    if (!term) return;
+    const r = await fetch('/api/settings/exclude-terms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ term }) });
+    renderTerms(await r.json()); input.value = ''; loadJobs();
+  });
+  $('sv-exclude').addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-term]'); if (!b) return;
+    const r = await fetch(`/api/settings/exclude-terms/${encodeURIComponent(b.dataset.term)}`, { method: 'DELETE' });
+    renderTerms(await r.json()); loadJobs();
+  });
+
+  // ── Bar filters ──────────────────────────────────────────────────────
+  $('sv-where').addEventListener('click', (e) => {
+    const b = e.target.closest('.bar3-item'); if (!b) return;
+    state.where = b.dataset.value;
+    $('sv-where').querySelectorAll('.bar3-item').forEach(x => { x.classList.toggle('is-on', x === b); x.setAttribute('aria-selected', String(x === b)); });
+    loadJobs();
+  });
+  let findTimer;
+  $('sv-find').addEventListener('input', () => {
+    clearTimeout(findTimer);
+    findTimer = setTimeout(() => { state.find = $('sv-find').value.toLowerCase().trim(); render(); }, 150);
+  });
+
+  // ── Regions ──────────────────────────────────────────────────────────
+  // States fully within 160 miles of Philadelphia, and cities in the states that straddle the line.
+  const NEAR_PHILLY_STATES = [', pa', ', nj', ', de', ', md', ', dc'];
+  const NEAR_PHILLY_CITIES = ['new york', 'nyc', 'brooklyn', 'manhattan', 'bronx', 'queens', 'long island',
+    'stamford, ct', 'bridgeport, ct', 'new haven, ct', 'richmond, va', 'mclean', 'arlington, va', 'alexandria, va',
+    'reston, va', 'herndon, va', 'fairfax, va', 'falls church', 'tysons'];
+  const NON_US = ['canada','united kingdom','germany','france','australia','india','china','japan','singapore','netherlands',
+    'ireland','sweden','norway','denmark','finland','switzerland','austria','belgium','poland','spain','italy','portugal',
+    'brazil','israel','south korea','new zealand','south africa','mexico','toronto','vancouver','montreal','calgary','ottawa',
+    'bangalore','bengaluru','mumbai','hyderabad','pune','chennai','berlin','munich','frankfurt','hamburg','sydney','melbourne',
+    'brisbane','tokyo','osaka','beijing','shanghai','shenzhen','amsterdam','stockholm','oslo','copenhagen','helsinki','zurich',
+    'geneva','vienna','brussels','warsaw','madrid','barcelona','milan','lisbon','tel aviv','seoul','auckland','dubai'];
+  // ", ST" catches "City, ST" and keeps Vienna, VA or Milan, MI inside the US.
+  const US_STATES = ['al','ak','az','ar','ca','co','ct','de','fl','ga','hi','id','il','in','ia','ks','ky','la','me','md','ma','mi',
+    'mn','ms','mo','mt','ne','nv','nh','nj','nm','ny','nc','nd','oh','ok','or','pa','ri','sc','sd','tn','tx','ut','vt','va','wa',
+    'wv','wi','wy','dc'].map(s => ', ' + s);
+  function isUS(loc) {
+    if (!loc) return true;
+    const l = loc.toLowerCase();
+    if (l.includes('united states') || US_STATES.some(s => l.includes(s))) return true;
+    return !NON_US.some(k => l.includes(k));
+  }
+  function nearPhilly(loc) {
+    if (!loc) return true;
+    const l = loc.toLowerCase();
+    return NEAR_PHILLY_STATES.some(s => l.includes(s)) || NEAR_PHILLY_CITIES.some(c => l.includes(c));
+  }
+
+  // ── Postings ─────────────────────────────────────────────────────────
+  async function loadJobs() {
+    const p = new URLSearchParams({ per_company_limit: '25' });
+    if (state.profiles.size) p.set('profile_ids', [...state.profiles].join(','));
+    if (state.where) p.set('location_type', state.where);
+    loaded = false;
+    $('sv-count').textContent = '';
+    $('sv-list').innerHTML = '<p class="sv-empty">Loading…</p>';
+    try {
+      jobs = (await (await fetch(`/api/jobs?${p}`)).json()).results;
+      loaded = true; render();
+    } catch (e) {
+      $('sv-list').innerHTML = `<p class="sv-empty sv-err">Couldn't load postings: ${escH(e.message)}</p>`;
+    }
+  }
+
+  function visible() {
+    const q = state.find;
+    return jobs.filter(j => {
+      if (q && !j.title.toLowerCase().includes(q) && !j.company.toLowerCase().includes(q)) return false;
+      if (state.region === 'us' && !isUS(j.location)) return false;
+      if (state.region === 'outside' && isUS(j.location)) return false;
+      if (state.region === 'near_philly' && !nearPhilly(j.location)) return false;
+      return true;
+    });
+  }
+
+  const SORT = {
+    title: j => j.title.toLowerCase(), company: j => j.company.toLowerCase(),
+    location: j => (j.location || '~').toLowerCase(), posted: j => j.posted_date ? j.days_old : 9999,
+    match: j => -(j.relevance_score || 0),
+  };
+  function head(col, label, cls = '') {
+    const on = state.sort.col === col;
+    const ind = on ? (state.sort.dir === 1 ? '↑' : '↓') : '';
+    return `<th class="${cls}" data-sort="${col}" aria-sort="${on ? (state.sort.dir === 1 ? 'ascending' : 'descending') : 'none'}">${label}<span class="ind">${ind}</span></th>`;
+  }
+
+  function render() {
+    if (!loaded) return;
+    const rows = visible();
+    if (state.sort.col) {
+      const f = SORT[state.sort.col], d = state.sort.dir;
+      rows.sort((a, b) => { const x = f(a), y = f(b); return x < y ? -d : x > y ? d : 0; });
+    }
+    const ranked = state.profiles.size > 0;
+    const shown = rows.length < jobs.length ? `${rows.length} of ${jobs.length} postings` : plural(jobs.length, 'posting', 'postings');
+    $('sv-count').textContent = shown + (ranked && !state.sort.col ? ' · best match first' : '');
+    if (!rows.length) {
+      $('sv-list').innerHTML = `<p class="sv-empty">${jobs.length ? 'Nothing matches. Loosen the filters above.' : 'No open postings from the last week. Survey now to read the verified career pages.'}</p>`;
+      return;
+    }
+    $('sv-list').innerHTML = `
+      <table class="sv-table">
+        <colgroup><col class="c-title"><col class="c-co"><col class="c-loc">${ranked ? '<col class="c-match">' : ''}<col class="c-age"><col class="c-act"></colgroup>
+        <thead><tr>${head('title', 'Posting')}${head('company', 'Company')}${head('location', 'Where', 'c-hide')}${ranked ? head('match', 'Match', 'c-hide') : ''}${head('posted', 'Posted')}<th class="no-sort"></th></tr></thead>
+        <tbody>${rows.map(j => row(j, ranked)).join('')}</tbody>
+      </table>`;
+  }
+
+  function row(j, ranked) {
+    const age = !j.posted_date ? '—' : j.days_old > 0 ? `${j.days_old}d ago` : 'today';
+    const kw = ranked && j.matched_keywords.length ? `<span class="sv-kw">${j.matched_keywords.map(escH).join(' · ')}</span>` : '';
+    const match = ranked ? `<td class="sv-match c-hide"><i style="width:${Math.round(j.relevance_score * .4)}px"></i>${j.relevance_score}%</td>` : '';
+    return `<tr>
+      <td><a class="sv-title" href="${escH(j.url)}" target="_blank" rel="noopener">${escH(j.title)}</a>${kw}</td>
+      <td class="sv-co">${escH(j.company)}</td>
+      <td class="sv-loc c-hide" title="${escH(j.location || '')}">${escH(j.location || '—')}</td>
+      ${match}
+      <td class="sv-age">${age}</td>
+      <td><button type="button" class="sv-save" data-id="${j.job_id}" ${j.is_saved ? 'disabled' : ''} title="Add to the pipeline">${j.is_saved ? 'Saved' : 'Save'}</button></td>
+    </tr>`;
+  }
+
+  $('sv-list').addEventListener('click', async (e) => {
+    const th = e.target.closest('th[data-sort]');
+    if (th) {
+      const col = th.dataset.sort;
+      state.sort = { col, dir: state.sort.col === col ? -state.sort.dir : 1 };
+      render(); return;
+    }
+    const b = e.target.closest('.sv-save');
+    if (!b || b.disabled) return;
+    b.disabled = true; b.textContent = '…';
+    try {
+      const r = await fetch('/api/pipeline/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job_id: Number(b.dataset.id) }) });
+      if (!r.ok) throw new Error(r.status);
+      b.textContent = 'Saved';
+      const j = jobs.find(x => x.job_id === Number(b.dataset.id)); if (j) j.is_saved = true;
+    } catch { b.disabled = false; b.textContent = 'Save'; }
+  });
+
+  // ── Export ───────────────────────────────────────────────────────────
+  $('sv-export').addEventListener('click', () => {
+    const rows = visible();
+    if (!rows.length) { $('sv-count').textContent = 'Nothing to export.'; return; }
+    const cell = v => `"${(v == null ? '' : String(v)).replace(/"/g, '""')}"`;
+    const lines = [['Title', 'Company', 'Location', 'Posted', 'Match %', 'URL'].join(',')]
+      .concat(rows.map(j => [cell(j.title), cell(j.company), cell(j.location),
+        cell(j.posted_date ? new Date(j.posted_date).toLocaleDateString() : ''), j.relevance_score, cell(j.url)].join(',')));
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })), download: 'survey.csv' });
+    a.click(); URL.revokeObjectURL(a.href);
+  });
+
+  loadSummary(); loadProfiles(); loadTerms(); loadJobs();
+</script>
+{% endblock %}

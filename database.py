@@ -34,6 +34,10 @@ def init_db():
             "ALTER TABLE companies ADD COLUMN url_source VARCHAR(30)",
             "ALTER TABLE companies ADD COLUMN verified_at DATETIME",
             "ALTER TABLE companies ADD COLUMN check_json TEXT",
+            # Keyword profiles became facets of one Profile: each sits on a side.
+            "ALTER TABLE keyword_profiles ADD COLUMN side VARCHAR(10)",
+            "ALTER TABLE keyword_profiles ADD COLUMN position INTEGER",
+            "UPDATE keyword_profiles SET side = 'want' WHERE side IS NULL",
             # Scraping now waits for George to verify each career page. Pages
             # that already produced jobs have proved themselves and keep running;
             # other typed-in pages wait. Both only touch rows not yet labelled.

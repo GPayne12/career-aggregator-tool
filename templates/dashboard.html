@@ -5,7 +5,7 @@
 {#- Overview: every company as a dot, drawn by how far along it is with you.
       position (band, outside in)  closed · watching · preparing · applied · talking
       size                         your interest: advocacy + motivation + matching postings (0–9)
-      filled / hollow              Search scrapes its verified career page / not yet verified
+      filled / hollow              Search surveys its verified career page / not yet verified
       tangerine pulse              something new this week: a stage change, or fresh matching postings
     Click a dot for the company: turn its interest up (the dot grows), see its
     applications, open Prepare. The List view and the edit dialog carry over
@@ -13,10 +13,8 @@
 
 {% block bar %}
 <nav class="bar3" aria-label="Overview">
-  <a class="bar3-item" href="/search"><b id="n-jobs">—</b> jobs available</a>
   <a class="bar3-item" href="/pipeline"><b id="n-pipeline">—</b> in pipeline</a>
   <a class="bar3-item" href="/companies/manage"><b id="n-companies">—</b> companies</a>
-  <a class="bar3-item" href="/profiles/manage"><b id="n-profiles">—</b> keyword profiles</a>
   <span class="bar3-spacer"></span>
   <label class="bar3-find"><span class="sr">Find a company</span>
     <input id="find" type="search" placeholder="Find a company" autocomplete="off" list="find-list"><datalist id="find-list"></datalist></label>
@@ -30,6 +28,8 @@
 {% block wide %}
 <div class="ov">
   <section class="ov-main" aria-label="Companies">
+    {#- Every way of adding companies starts here. -#}
+    <button type="button" class="ov-add" id="add-open" aria-expanded="false" aria-controls="add-panel">+ Add companies</button>
     <div class="ov-field" id="field">
       <svg id="field-svg" role="img" aria-labelledby="field-title"><title id="field-title">Companies by how far along each is, sized by your interest</title></svg>
       <div class="ov-key ov-key--left" id="key-left" aria-hidden="true"></div>
@@ -41,6 +41,36 @@
   </section>
   {#- Opens over the right edge when a company is selected. -#}
   <aside class="ov-panel" id="panel" aria-live="polite" hidden></aside>
+  {#- Adding companies: LinkedIn intake (in the studio), one by hand, or a list. -#}
+  <aside class="ov-panel ov-addp" id="add-panel" aria-label="Add companies" hidden>
+    <button type="button" class="ov-back" id="add-close" aria-label="Close">Close ×</button>
+    <h2>Add companies</h2>
+    <p class="muted">New companies wait in <a href="/companies/manage">Landscape</a> until you verify their career pages; only verified ones are surveyed.</p>
+
+    <h3>From your LinkedIn activity</h3>
+    <div id="add-intake">
+      <p>Go through the companies behind your saved jobs, applications and follows, one card at a time. Keep or pass each one, then add them all together.</p>
+      <button type="button" class="ov-btn ov-btn--solid" id="add-intake-go">Start intake →</button>
+    </div>
+    <p class="muted" id="add-intake-off" hidden>Intake runs in the studio. Open Search there to use it.</p>
+
+    <h3>One company</h3>
+    <form id="add-one" class="ov-form">
+      <input type="text" id="add-name" placeholder="Company name" required autocomplete="off">
+      <input type="url" id="add-url" placeholder="Career page (optional)" autocomplete="off">
+      <p class="muted">Leave the career page empty and Search will look it up.</p>
+      <button type="submit" class="ov-btn ov-btn--solid" id="add-one-go">Add</button>
+      <p class="ov-msg" id="add-one-msg" aria-live="polite"></p>
+    </form>
+
+    <h3>A list</h3>
+    <form id="add-csv" class="ov-form">
+      <p>A CSV with a <code>name</code> column; <code>career_url</code> is optional.</p>
+      <input type="file" id="add-csv-file" accept=".csv">
+      <button type="submit" class="ov-btn ov-btn--line" id="add-csv-go">Import</button>
+      <p class="ov-msg" id="add-csv-msg" aria-live="polite"></p>
+    </form>
+  </aside>
 </div>
 
 <!-- Company edit dialog (from the old dashboard) -->
@@ -52,7 +82,7 @@
     <input type="text" id="ce-name">
     <label class="ce-label" for="ce-url">Career page</label>
     <input type="url" id="ce-url" placeholder="https://…">
-    <label class="ce-skip"><input type="checkbox" id="ce-skip"> Skipped (never scraped, hidden from the field)</label>
+    <label class="ce-skip"><input type="checkbox" id="ce-skip"> Skipped (never surveyed, hidden from the field)</label>
     <p class="ce-error" id="ce-error"></p>
     <div class="ce-actions">
       <button type="button" class="secondary" onclick="closeCompanyEdit()">Cancel</button>
@@ -87,6 +117,28 @@
   .ov-panel { position:absolute; top:0; right:0; bottom:0; width:360px; max-width:100%; z-index:10; box-sizing:border-box;
               background:#fffefb; border-left:1px solid #d4cfc7; box-shadow:-12px 0 32px rgba(26,25,22,.08); overflow:auto; padding:20px 22px 28px; }
   .ov-panel[hidden] { display:none; }
+
+  /* Adding companies: one button at the field's top right, one drawer. */
+  html body .ov-add { all:unset; box-sizing:border-box; position:absolute; top:14px; right:20px; z-index:3; cursor:pointer; white-space:nowrap;
+                      padding:8px 14px; border-radius:999px; background:#2d6a4f; color:#fff !important; font:600 12px 'JetBrains Mono', ui-monospace, monospace !important;
+                      box-shadow:0 2px 10px rgba(26,25,22,.10); }
+  html body .ov-add:hover { background:#235840; }
+  .ov-addp p { font-size:15px; }
+  .ov-addp p.muted { font-size:13px; }
+  .ov-addp code { font:12px 'JetBrains Mono', ui-monospace, monospace; background:#f0ede7; padding:1px 4px; border-radius:3px; }
+  .ov-form { display:flex; flex-direction:column; gap:8px; align-items:flex-start; margin:0; }
+  .ov-form input[type=text], .ov-form input[type=url] { width:100%; box-sizing:border-box; margin:0 !important; }
+  .ov-form input[type=file] { font:12px 'JetBrains Mono', ui-monospace, monospace; }
+  .ov-form p { margin:0; }
+  html body .ov-btn { all:unset; box-sizing:border-box; cursor:pointer; padding:8px 14px; border-radius:999px; white-space:nowrap;
+                      font:600 12px 'JetBrains Mono', ui-monospace, monospace !important; }
+  html body .ov-btn--solid { background:#2d6a4f; color:#fff !important; }
+  html body .ov-btn--solid:hover { background:#235840; }
+  html body .ov-btn--line { border:1px solid #d4cfc7; background:#fffefb; color:#5c5a55 !important; }
+  html body .ov-btn--line:hover { background:#f0ede7; }
+  html body .ov-btn:disabled { opacity:.5; cursor:default; }
+  .ov-addp p.ov-msg { font-size:13px; color:#5c5a55; min-height:1em; }
+  .ov-msg .ok { color:#2d6a4f; } .ov-msg .err { color:#b42318; }
 
   /* The key sits in the field's corner, behind the dots. */
   .ov-key { position:absolute; bottom:12px; z-index:0; pointer-events:none; opacity:.5; display:grid; gap:0; }
@@ -204,18 +256,13 @@
 
   // ── Load ──────────────────────────────────────────────────────────────────
   async function load() {
-    const [field, jobs] = await Promise.all([
-      fetch('/api/companies/field').then(r => r.json()),
-      fetch('/api/jobs?per_company_limit=10').then(r => r.json()).catch(() => ({ total: '—' })),
-    ]);
+    const field = await fetch('/api/companies/field').then(r => r.json());
     companies = field.companies;
     byId = Object.fromEntries(companies.map(c => [c.id, c]));
     companies.forEach(c => { c.band = bandOf(c); });
     const active = companies.filter(c => !c.is_skipped);
-    document.getElementById('n-jobs').textContent = jobs.total ?? '—';
     document.getElementById('n-pipeline').textContent = companies.reduce((n, c) => n + c.applications.length, 0);
     document.getElementById('n-companies').textContent = active.length;
-    document.getElementById('n-profiles').textContent = field.profiles;
     document.getElementById('find-list').innerHTML = active.map(c => `<option value="${esc(c.name)}">`).join('');
     draw();
     renderList();
@@ -236,7 +283,7 @@
     const X = x => cx + (x - cx) * sx;
     const data = companies.filter(c => !c.is_skipped);
     document.getElementById('field-empty').hidden = data.length > 0;
-    document.getElementById('field-empty').textContent = 'No companies yet. Add some in Intake or Companies.';
+    document.getElementById('field-empty').textContent = 'No companies yet. Add some with + Add companies, top right.';
 
     // Re-layout from scratch only when the size changes; otherwise nodes keep their places.
     const key = `${W}x${H}`;
@@ -326,7 +373,7 @@
       <span class="k">interest</span> ${interestOf(c)} of 9 <span class="k">(A ${c.score_a ?? '–'} · M ${c.score_m ?? '–'} · P ${c.score_p})</span><br>
       <span class="k">postings</span> ${c.open_jobs} open${c.matched_jobs ? `, ${c.matched_jobs} match your profiles` : ''}<br>
       ${live.length ? live.slice(0, 3).map(a => `<span class="k">${STAGE_LABEL[a.status]}</span> ${esc(a.title)}`).join('<br>') + '<br>' : ''}
-      <span class="k">career page</span> ${watched(c) ? 'verified, scraped' : 'not verified yet'}`;
+      <span class="k">career page</span> ${watched(c) ? 'verified, surveyed' : 'not verified yet'}`;
     tip.hidden = false;
     const x = e.clientX - box.left, y = e.clientY - box.top;
     tip.style.left = Math.min(x + 16, box.width - 290) + 'px';
@@ -336,6 +383,7 @@
 
   // ── Select and the panel ──────────────────────────────────────────────────
   function select(id) {
+    if (id != null) showAdd(false);
     selected = id;
     if (nodesSel) nodesSel.classed('is-sel', d => d.id === selected);
     renderPanel();
@@ -374,8 +422,8 @@
         </div></li>`).join('')}</ul>` : `<p class="muted">None yet. <a href="/search">Find a posting →</a></p>`}
 
       <h3>CAREER PAGE</h3>
-      <p>${c.career_url ? `<a href="${esc(c.career_url)}" target="_blank" rel="noopener">${esc(host(c.career_url))} ↗</a> · ` : ''}<span class="muted">${watched(c) ? 'verified; Search scrapes it' : c.career_url ? 'waiting for you to verify it' : 'none yet'}</span></p>
-      <p class="muted">${c.open_jobs} open postings this week. <a href="/companies/manage">Review in Companies →</a></p>
+      <p>${c.career_url ? `<a href="${esc(c.career_url)}" target="_blank" rel="noopener">${esc(host(c.career_url))} ↗</a> · ` : ''}<span class="muted">${watched(c) ? 'verified; Search surveys it' : c.career_url ? 'waiting for you to verify it' : 'none yet'}</span></p>
+      <p class="muted">${c.open_jobs} open postings this week. <a href="/companies/manage">Review in Landscape →</a></p>
 
       <p style="margin-top:18px;display:flex;gap:8px;">
         <button type="button" class="secondary" data-act="edit">Edit</button>
@@ -388,7 +436,7 @@
     const item = (icon, text) => `<div><svg width="40" height="18">${icon}</svg>${text}</div>`;
     document.getElementById('key-left').innerHTML =
       item(`<circle cx="7" cy="9" r="4" fill="#8a857c"/><circle cx="27" cy="9" r="8" fill="#8a857c"/>`, 'Size: your interest, 0 to 9') +
-      item(`<circle cx="9" cy="9" r="6" fill="#8a857c"/><circle cx="29" cy="9" r="5" fill="${SURFACE}" stroke="#8a857c" stroke-width="2"/>`, 'Filled: career page verified and scraped');
+      item(`<circle cx="9" cy="9" r="6" fill="#8a857c"/><circle cx="29" cy="9" r="5" fill="${SURFACE}" stroke="#8a857c" stroke-width="2"/>`, 'Filled: career page verified and surveyed');
     document.getElementById('key-right').innerHTML =
       item(`<circle cx="20" cy="9" r="5" fill="none" stroke="#c47f00" stroke-width="2"/><circle cx="20" cy="9" r="8" fill="none" stroke="#c47f00" stroke-opacity=".4"/>`, 'Pulse: new this week') +
       item(`<circle cx="20" cy="9" r="3" fill="#c47f00"/><ellipse cx="20" cy="9" rx="18" ry="7" fill="none" stroke="#d4cfc7"/>`, 'Closer to the middle: further along');
@@ -487,6 +535,71 @@
 
   let resizeT;
   window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (view === 'field') draw(); }, 150); });
+  // ── Adding companies ──────────────────────────────────────────────────────
+  function showAdd(open) {
+    document.getElementById('add-panel').hidden = !open;
+    document.getElementById('add-open').setAttribute('aria-expanded', String(open));
+    if (open) { if (selected != null) select(null); document.getElementById('add-name').focus({ preventScroll: true }); }
+  }
+  document.getElementById('add-open').addEventListener('click', () => showAdd(document.getElementById('add-panel').hidden));
+  document.getElementById('add-close').addEventListener('click', () => showAdd(false));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.getElementById('add-panel').hidden) showAdd(false); });
+
+  // Intake is the studio's own view: ask the studio to open it.
+  document.getElementById('add-intake').hidden = !embedded;
+  document.getElementById('add-intake-off').hidden = embedded;
+  document.getElementById('add-intake-go').addEventListener('click', () => {
+    parent.postMessage({ source: 'search', action: 'intake' }, '*');
+  });
+
+  const say = (id, html) => { document.getElementById(id).innerHTML = html; };
+  async function apiJson(url, opts) {
+    const r = await fetch(url, opts);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(r.status === 409 ? 'Already in Search.' : (Array.isArray(d.detail) ? d.detail.map(e => e.msg).join(', ') : d.detail || `Error ${r.status}`));
+    return d;
+  }
+  const FOUND = { verified: 'verified', found: 'a job board was found', page: 'a careers page was found', website: 'only a website was found', none: 'nothing was found yet', unverified: 'its career page waits for you' };
+
+  document.getElementById('add-one').addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = document.getElementById('add-name').value.trim();
+    const career_url = document.getElementById('add-url').value.trim() || null;
+    if (!name) return;
+    const btn = document.getElementById('add-one-go');
+    btn.disabled = true; btn.textContent = 'Adding…'; say('add-one-msg', '');
+    try {
+      let c = await apiJson('/api/companies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, career_url }) });
+      if (!career_url) { say('add-one-msg', 'Added. Looking it up…'); c = await apiJson(`/api/companies/${c.id}/discover`, { method: 'POST' }); }
+      say('add-one-msg', `<span class="ok">Added ${esc(c.name)}: ${FOUND[c.url_status] || 'added'}.</span>`);
+      document.getElementById('add-name').value = ''; document.getElementById('add-url').value = '';
+      await load();
+    } catch (err) { say('add-one-msg', `<span class="err">${esc(err.message)}</span>`); }
+    finally { btn.disabled = false; btn.textContent = 'Add'; }
+  });
+
+  document.getElementById('add-csv').addEventListener('submit', async e => {
+    e.preventDefault();
+    const file = document.getElementById('add-csv-file').files[0];
+    if (!file) { say('add-csv-msg', '<span class="err">Choose a CSV file first.</span>'); return; }
+    const btn = document.getElementById('add-csv-go');
+    btn.disabled = true; btn.textContent = 'Importing…'; say('add-csv-msg', '');
+    try {
+      const form = new FormData(); form.append('file', file);
+      const d = await apiJson('/api/companies/upload-csv', { method: 'POST', body: form });
+      let m = `<span class="ok">${d.added} added</span>, ${d.skipped} already in Search.`;
+      if (d.added) m += ` <a href="/companies/manage">Look up their career pages in Landscape →</a>`;
+      if (d.errors && d.errors.length) m += ` <span class="err">${esc(d.errors.join('; '))}</span>`;
+      say('add-csv-msg', m);
+      document.getElementById('add-csv-file').value = '';
+      await load();
+    } catch (err) { say('add-csv-msg', `<span class="err">Import failed: ${esc(err.message)}</span>`); }
+    finally { btn.disabled = false; btn.textContent = 'Import'; }
+  });
+
+  // The studio can open the drawer directly (after intake closes, say).
+  if (location.hash === '#add') showAdd(true);
+
   document.addEventListener('DOMContentLoaded', load);
 </script>
 {% endblock %}

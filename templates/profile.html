@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - Career Aggregator{% endblock %}
+
+{#- Profile: George's one profile, in facets on two sides.
+      What you want    roles and directions. Matched in posting titles: they decide what
+                       counts as a match, fill a company's slots first, and set its P score.
+      What you can do  skills. Matched anywhere in a posting: they lift the ones that ask
+                       for what you bring. Can be brought in from the studio profile.
+    Everything edits in place and saves as you go (Enter, or leaving the box). -#}
+
+{% block content %}
+<div class="pf-page">
+  <div class="pf-head">
+    <div>
+      <h1>Profile</h1>
+      <p class="pf-summary">One profile, two sides. <b>What you want</b> decides which postings count as a match: Search reads their titles.
+        <b>What you can do</b> lifts the postings whose text asks for your skills.</p>
+    </div>
+    <p class="pf-total" id="pf-total"></p>
+  </div>
+
+  <div class="pf-sides">
+    <section class="pf-side" data-side="want" aria-labelledby="want-h">
+      <h2 id="want-h">What you want</h2>
+      <p class="pf-hint">Roles and directions, as they'd appear in a job title.</p>
+      <div class="pf-facets" id="facets-want"></div>
+      <button type="button" class="pf-btn pf-btn--line" data-act="new" data-side="want">+ Add a facet</button>
+    </section>
+    <section class="pf-side" data-side="can" aria-labelledby="can-h">
+      <h2 id="can-h">What you can do</h2>
+      <p class="pf-hint">Skills, tools and methods, as a posting would ask for them.</p>
+      <div class="pf-facets" id="facets-can"></div>
+      <div class="pf-row">
+        <button type="button" class="pf-btn pf-btn--line" data-act="new" data-side="can">+ Add a facet</button>
+        <button type="button" class="pf-btn pf-btn--line" id="pf-import" hidden title="Your skill groups from the studio profile (the resume detail and coursework)">Bring in your studio skills</button>
+      </div>
+      <div class="pf-import" id="pf-import-box" hidden></div>
+    </section>
+  </div>
+
+  <section class="pf-out" aria-labelledby="out-h">
+    <h2 id="out-h">Leave out</h2>
+    <p class="pf-hint">Postings with any of these in the title never show.</p>
+    <div class="pf-terms" id="exclude"></div>
+  </section>
+</div>
+
+<style>
+  .pf-page { --ink:#1a1916; --ink2:#5c5a55; --ink3:#8a857c; --line:#d4cfc7; --hair:#e9e5dd; --paper:#fffefb; --bg:#faf9f7; --surface:#f0ede7;
+             --ok:#2d6a4f; --miss:#b42318; --tang:#c47f00; --want:#5b5fc7; --can:#1f8a5a;
+             --mono:'JetBrains Mono', ui-monospace, Menlo, monospace; --serif:'Source Serif 4', Georgia, serif;
+             font-family:var(--serif); color:var(--ink); max-width:72rem; margin:0 auto; padding:8px 0 48px; }
+  .pf-page a { color:var(--ok); }
+
+  .pf-head { display:flex; justify-content:space-between; align-items:flex-end; gap:1rem; flex-wrap:wrap; padding-bottom:14px; border-bottom:1px solid var(--line); }
+  .pf-head h1 { font:600 24px/1.2 var(--serif) !important; margin:0; }
+  .pf-page p.pf-summary { margin:6px 0 0; font-size:15px; color:var(--ink2); max-width:46rem; }
+  .pf-summary b { color:var(--ink); font-weight:600; }
+  .pf-page p.pf-total { margin:0; font:12px var(--mono); color:var(--ink3); white-space:nowrap; }
+  .pf-total b { color:var(--ink); }
+
+  .pf-sides { display:grid; grid-template-columns:1fr 1fr; gap:0 40px; margin-top:22px; }
+  .pf-side h2, .pf-out h2 { font:600 18px var(--serif) !important; margin:0; display:flex; align-items:center; gap:9px; }
+  .pf-side h2::before { content:""; width:9px; height:9px; border-radius:50%; background:var(--side); }
+  .pf-side[data-side="want"] { --side:var(--want); }
+  .pf-side[data-side="can"] { --side:var(--can); }
+  .pf-page p.pf-hint { margin:2px 0 12px; font-size:13px; color:var(--ink3); }
+
+  .pf-facet { padding:12px 0 14px; border-top:1px solid var(--hair); }
+  .pf-facet:last-child { border-bottom:1px solid var(--hair); margin-bottom:12px; }
+  .pf-facet-head { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
+  .pf-name { font-weight:600; font-size:15px; cursor:text; border-radius:3px; padding:0 2px; margin-left:-2px; }
+  .pf-name:hover { background:rgba(45,106,79,.06); outline:1px dashed rgba(45,106,79,.45); outline-offset:2px; }
+  .pf-open { font:12px var(--mono); color:var(--ink3); white-space:nowrap; }
+  .pf-open b { color:var(--ink); }
+  .pf-acts { margin-left:auto; display:flex; gap:2px; opacity:.35; transition:opacity .15s; }
+  .pf-facet:hover .pf-acts, .pf-facet:focus-within .pf-acts { opacity:1; }
+
+  .pf-terms { display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+  .pf-term { display:inline-flex; align-items:center; gap:1px; padding:3px 3px 3px 10px; border-radius:999px; border:1px solid var(--line); background:var(--paper);
+             font:500 12px var(--mono); color:var(--ink2); }
+  .pf-side .pf-term { border-color:color-mix(in srgb, var(--side) 35%, var(--line)); }
+  .pf-out .pf-term { background:var(--surface); border-color:transparent; }
+  html body .pf-term button { all:unset; cursor:pointer; padding:0 6px; font:12px var(--mono) !important; color:var(--ink3) !important; border-radius:999px; }
+  html body .pf-term button:hover { color:var(--miss) !important; }
+  .pf-page input.pf-add { width:170px; margin:0 !important; padding:3px 10px !important; height:auto !important; box-sizing:border-box;
+                          font:12px var(--mono) !important; border:1px dashed var(--line) !important; border-radius:999px !important; background:transparent !important; }
+  .pf-page input.pf-add:focus { border-style:solid !important; border-color:var(--ok) !important; background:var(--paper) !important; outline:none; }
+  .pf-page input.pf-name-input { font:600 15px var(--serif) !important; margin:0 !important; padding:1px 6px !important; height:auto !important; width:240px;
+                                 border:2px solid var(--ok) !important; border-radius:4px !important; background:rgba(45,106,79,.05) !important; }
+
+  html body .pf-btn { all:unset; box-sizing:border-box; cursor:pointer; padding:7px 14px; border-radius:999px; white-space:nowrap;
+                      font:500 12px var(--mono) !important; color:var(--ink2) !important; }
+  html body .pf-btn:hover { background:var(--surface); color:var(--ink) !important; }
+  html body .pf-btn--line { border:1px solid var(--line); background:var(--paper); }
+  html body .pf-btn--solid { background:var(--ok); color:#fff !important; font-weight:600 !important; }
+  html body .pf-btn--solid:hover { background:#235840; color:#fff !important; }
+  html body .pf-btn--quiet { padding:3px 7px; font-size:12px; color:var(--ink3) !important; }
+  html body .pf-btn--danger { color:var(--miss) !important; }
+  .pf-row { display:flex; gap:6px; flex-wrap:wrap; }
+
+  .pf-import { margin-top:14px; padding:14px 16px; border-radius:10px; background:var(--surface); }
+  .pf-import h3 { font:600 12px var(--mono) !important; color:var(--ink3) !important; margin:0 0 8px !important; text-transform:none; }
+  .pf-import label { display:flex; gap:9px; align-items:flex-start; padding:5px 0; font:15px var(--serif) !important; color:var(--ink); cursor:pointer; }
+  .pf-page .pf-import label input[type=checkbox] { flex:none; width:auto !important; height:auto !important; margin:6px 0 0 !important; padding:0 !important; accent-color:var(--ok); }
+  .pf-import .pf-sub { display:block; font:12px var(--mono); color:var(--ink3); margin-top:1px; }
+  .pf-page .pf-import p { margin:0 0 8px; font-size:13px; color:var(--ink2); }
+
+  .pf-out { margin-top:30px; padding-top:16px; border-top:1px solid var(--line); }
+
+  .pf-flash { animation:pf-flash 1.6s ease-out 1; }
+  @keyframes pf-flash { 0%, 40% { box-shadow:0 0 0 2px var(--tang); } 100% { box-shadow:0 0 0 2px transparent; } }
+  .pf-page p.pf-empty { font-size:13px; color:var(--ink3); font-style:italic; margin:0 0 12px; }
+
+  @media (max-width: 760px) { .pf-sides { grid-template-columns:1fr; gap:28px; } }
+</style>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const embedded = document.body.classList.contains('embedded');
+  let facets = [], openPostings = 0, excluded = [];
+
+  async function api(path, opts = {}) {
+    const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    const d = r.status === 204 ? null : await r.json().catch(() => null);
+    if (!r.ok) throw new Error((d && d.detail) || `Error ${r.status}`);
+    return d;
+  }
+  const flash = el => { if (!el) return; el.classList.remove('pf-flash'); void el.offsetWidth; el.classList.add('pf-flash'); };
+
+  async function load() {
+    const [s, ex] = await Promise.all([api('/api/profiles/summary'), api('/api/settings/exclude-terms')]);
+    facets = s.facets; openPostings = s.open_postings; excluded = ex;
+    render();
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  function render() {
+    for (const side of ['want', 'can']) {
+      const mine = facets.filter(f => f.side === side);
+      $(`facets-${side}`).innerHTML = mine.length ? mine.map(facetHtml).join('')
+        : `<p class="pf-empty">${side === 'want' ? 'Nothing yet. Add the kinds of roles you want.' : 'Nothing yet. Add your skills, or bring them in from the studio.'}</p>`;
+    }
+    const kw = facets.reduce((n, f) => n + f.keywords.length, 0);
+    $('pf-total').innerHTML = `<b>${facets.length}</b> facets · <b>${kw}</b> terms · <b>${openPostings}</b> open postings this week`;
+    renderExcluded();
+  }
+  function facetHtml(f) {
+    const other = f.side === 'want' ? 'can' : 'want';
+    return `<div class="pf-facet" data-id="${f.id}">
+      <div class="pf-facet-head">
+        <span class="pf-name" data-act="rename" tabindex="0" title="Click to rename">${esc(f.name)}</span>
+        <span class="pf-open" title="Open postings from the last week this facet matches"><b>${f.open}</b> open</span>
+        <span class="pf-acts">
+          <button type="button" class="pf-btn pf-btn--quiet" data-act="flip" title="Move to ${other === 'can' ? 'What you can do' : 'What you want'}">${other === 'can' ? 'Move to can →' : '← Move to want'}</button>
+          <button type="button" class="pf-btn pf-btn--quiet pf-btn--danger" data-act="remove">Remove</button>
+        </span>
+      </div>
+      <div class="pf-terms">
+        ${f.keywords.map((k, i) => `<span class="pf-term">${esc(k)}<button type="button" data-act="drop" data-i="${i}" aria-label="Remove ${esc(k)}" title="Remove">×</button></span>`).join('')}
+        <input type="text" class="pf-add" data-act="add" placeholder="add a term" aria-label="Add a term to ${esc(f.name)}" autocomplete="off">
+      </div>
+    </div>`;
+  }
+  function renderExcluded() {
+    $('exclude').innerHTML = excluded.map(t => `<span class="pf-term">${esc(t)}<button type="button" data-ex="${esc(t)}" aria-label="Stop leaving out ${esc(t)}" title="Remove">×</button></span>`).join('')
+      + `<input type="text" class="pf-add" id="exclude-add" placeholder="add a word" aria-label="Add a word to leave out" autocomplete="off">`;
+  }
+
+  // ── Saving ────────────────────────────────────────────────────────────────
+  const facetOf = el => facets.find(f => f.id === Number(el.closest('.pf-facet')?.dataset.id));
+  async function save(f, patch, focusAdd = false) {
+    try {
+      const d = await api(`/api/profiles/${f.id}`, { method: 'PUT', body: JSON.stringify(patch) });
+      Object.assign(f, d);
+      const s = await api('/api/profiles/summary');            // counts follow the words
+      s.facets.forEach(x => { const m = facets.find(y => y.id === x.id); if (m) m.open = x.open; });
+      render();
+      const el = document.querySelector(`.pf-facet[data-id="${f.id}"]`);
+      flash(el);
+      if (focusAdd) el?.querySelector('.pf-add')?.focus();
+    } catch (e) { alertInline(f, e.message); }
+  }
+  function alertInline(f, msg) {
+    const el = document.querySelector(`.pf-facet[data-id="${f.id}"] .pf-open`);
+    if (el) { el.textContent = msg; el.style.color = 'var(--miss)'; }
+  }
+  // Adding: Enter, or a comma-separated paste; several at once.
+  const split = v => v.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+
+  document.querySelector('.pf-page').addEventListener('keydown', async e => {
+    const t = e.target;
+    if (t.matches('.pf-add[data-act="add"]') && e.key === 'Enter') {
+      e.preventDefault();
+      const f = facetOf(t), add = split(t.value);
+      if (!f || !add.length) return;
+      const have = new Set(f.keywords.map(k => k.toLowerCase()));
+      save(f, { keywords: [...f.keywords, ...add.filter(k => !have.has(k.toLowerCase()))] }, true);
+    } else if (t.id === 'exclude-add' && e.key === 'Enter') {
+      e.preventDefault();
+      for (const term of split(t.value)) excluded = await api('/api/settings/exclude-terms', { method: 'POST', body: JSON.stringify({ term }) });
+      renderExcluded(); flash($('exclude')); $('exclude-add').focus();
+    } else if (t.matches('.pf-name') && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault(); startRename(t);
+    } else if (t.matches('.pf-name-input')) {
+      if (e.key === 'Enter') { e.preventDefault(); t.blur(); }
+      if (e.key === 'Escape') { t.dataset.cancel = '1'; t.blur(); }
+    }
+  });
+
+  function startRename(span) {
+    const f = facetOf(span); if (!f) return;
+    const input = Object.assign(document.createElement('input'), { type: 'text', className: 'pf-name-input', value: f.name });
+    span.replaceWith(input); input.focus(); input.select();
+    input.addEventListener('blur', () => {
+      const v = input.value.trim();
+      if (input.dataset.cancel || !v || v === f.name) return render();
+      save(f, { name: v });
+    }, { once: true });
+  }
+
+  document.querySelector('.pf-page').addEventListener('click', async e => {
+    const t = e.target.closest('[data-act], [data-ex]'); if (!t) return;
+    if (t.dataset.ex) {
+      excluded = await api(`/api/settings/exclude-terms/${encodeURIComponent(t.dataset.ex)}`, { method: 'DELETE' });
+      return renderExcluded();
+    }
+    const act = t.dataset.act, f = facetOf(t);
+    if (act === 'rename') return startRename(t);
+    if (act === 'drop' && f) return save(f, { keywords: f.keywords.filter((_, i) => i !== Number(t.dataset.i)) });
+    if (act === 'flip' && f) return save(f, { side: f.side === 'want' ? 'can' : 'want' });
+    if (act === 'remove' && f) {
+      t.parentElement.innerHTML = `<button type="button" class="pf-btn pf-btn--quiet pf-btn--danger" data-act="remove-yes">Remove ${esc(f.name)}?</button><button type="button" class="pf-btn pf-btn--quiet" data-act="remove-no">Keep</button>`;
+      return;
+    }
+    if (act === 'remove-no') return render();
+    if (act === 'remove-yes' && f) { await api(`/api/profiles/${f.id}`, { method: 'DELETE' }); facets = facets.filter(x => x !== f); return render(); }
+    if (act === 'new') return newFacet(t.dataset.side);
+  });
+
+  async function newFacet(side) {
+    // A name that isn't taken; renamed straight away.
+    let name = side === 'want' ? 'New direction' : 'New skills', n = 2;
+    while (facets.some(f => f.name.toLowerCase() === name.toLowerCase())) name = `${side === 'want' ? 'New direction' : 'New skills'} ${n++}`;
+    const d = await api('/api/profiles', { method: 'POST', body: JSON.stringify({ name, keywords: [], side }) });
+    facets.push({ ...d, open: 0 }); render();
+    startRename(document.querySelector(`.pf-facet[data-id="${d.id}"] .pf-name`));
+  }
+
+  // ── Bring in skills from the studio profile ──────────────────────────────
+  // The studio holds the canonical profile (the resume detail and coursework). It
+  // answers with skill groups only; contact details never leave it.
+  if (embedded) $('pf-import').hidden = false;
+  $('pf-import').addEventListener('click', () => {
+    $('pf-import-box').hidden = false;
+    $('pf-import-box').innerHTML = '<p>Asking the studio…</p>';
+    parent.postMessage({ source: 'search', action: 'profile-skills' }, '*');
+  });
+  let offered = {};
+  window.addEventListener('message', e => {
+    if (e.source !== window.parent || e.data?.source !== 'studio' || e.data.action !== 'profile-skills') return;
+    offered = e.data.skills || {};
+    const box = $('pf-import-box');
+    const groups = Object.entries(offered).filter(([, v]) => Array.isArray(v) && v.length);
+    if (!groups.length) { box.innerHTML = `<p>${esc(e.data.error || 'The studio profile has no skills yet.')}</p>`; return; }
+    box.innerHTML = `<h3>Skill groups in your studio profile</h3>
+      <p>Each becomes a facet here. One with the same name gets the new terms added.</p>
+      ${groups.map(([g, v], i) => {
+        const have = facets.find(f => f.name.toLowerCase() === g.toLowerCase());
+        const fresh = have ? v.filter(k => !have.keywords.some(x => x.toLowerCase() === k.toLowerCase())) : v;
+        return `<label><input type="checkbox" data-group="${esc(g)}" ${fresh.length ? 'checked' : 'disabled'}>
+          <span>${esc(g)}<span class="pf-sub">${have ? (fresh.length ? `${fresh.length} new of ${v.length}` : 'already here') : `${v.length} terms`} · ${esc(v.slice(0, 6).join(', '))}${v.length > 6 ? '…' : ''}</span></span></label>`;
+      }).join('')}
+      <div class="pf-row" style="margin-top:8px"><button type="button" class="pf-btn pf-btn--solid" id="pf-import-go">Add the ticked groups</button>
+      <button type="button" class="pf-btn" id="pf-import-cancel">Not now</button></div>`;
+  });
+  $('pf-import-box').addEventListener('click', async e => {
+    if (e.target.id === 'pf-import-cancel') { $('pf-import-box').hidden = true; return; }
+    if (e.target.id !== 'pf-import-go') return;
+    e.target.disabled = true; e.target.textContent = 'Adding…';
+    for (const cb of $('pf-import-box').querySelectorAll('input[data-group]:checked')) {
+      const g = cb.dataset.group, v = offered[g] || [];
+      const have = facets.find(f => f.name.toLowerCase() === g.toLowerCase());
+      if (have) {
+        const known = new Set(have.keywords.map(k => k.toLowerCase()));
+        await api(`/api/profiles/${have.id}`, { method: 'PUT', body: JSON.stringify({ keywords: [...have.keywords, ...v.filter(k => !known.has(k.toLowerCase()))] }) });
+      } else {
+        await api('/api/profiles', { method: 'POST', body: JSON.stringify({ name: g, keywords: v, side: 'can' }) });
+      }
+    }
+    $('pf-import-box').hidden = true;
+    await load();
+  });
+
+  load();
+</script>
+{% endblock %}

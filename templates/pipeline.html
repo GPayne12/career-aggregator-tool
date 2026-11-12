@@ -1,570 +1,651 @@
 {% extends "base.html" %}
 
-{% block title %}Application Pipeline - Career Aggregator{% endblock %}
+{% block title %}Pipeline - Career Aggregator{% endblock %}
 
-{% block content %}
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">
-  <div class="page-title" style="margin-bottom:0;">Application Pipeline</div>
-  <div style="display:flex; gap:0.5rem;">
-    <button onclick="openAddJobModal()" style="font-size:0.85rem; padding:0.35rem 0.85rem;">+ Add Job</button>
-    <button onclick="exportPipelineCSV()" class="secondary" style="font-size:0.85rem; padding:0.35rem 0.85rem;">Export CSV</button>
+{#- Pipeline: every application as a dot, flowing left to right through its stages.
+    Read it like the Overview:
+      lane (left → right)     saved · preparing · ready · applied · interviewing · offer
+      the strip along the foot declined
+      height in a lane        how long since it last moved: fresh at the top, sinking with age
+      colour                  the stage group, matching the Overview's bands
+      size                    the company's interest, 0 to 9 (A + M + P)
+      thin arc                preparation done, of Render's five steps (saved → ready only)
+      hollow                  gone quiet: longer in this stage than it should be
+      tangerine pulse         moved in the last day, or just now
+    Moving is meant to be quick: drag a dot to a lane, or select it and use ← → (D declines).
+    Changes show at once, with Undo. The page checks every few seconds for changes made
+    elsewhere (Render, another tab) and pulses what moved. -#}
+
+{% block bar %}
+<nav class="bar3" aria-label="Pipeline">
+  <span class="bar3-stat"><b id="n-prep">—</b> preparing</span>
+  <span class="bar3-stat"><b id="n-applied">—</b> applied</span>
+  <span class="bar3-stat"><b id="n-talking">—</b> talking</span>
+  <span class="bar3-stat"><b id="n-quiet">—</b> gone quiet</span>
+  <span class="bar3-spacer"></span>
+  <label class="bar3-find"><span class="sr">Find an application</span>
+    <input id="find" type="search" placeholder="Find a title or company" autocomplete="off"></label>
+  <div class="bar3-views" role="tablist" aria-label="View">
+    <button type="button" class="bar3-item is-on" data-view="field" role="tab" aria-selected="true">Field</button>
+    <button type="button" class="bar3-item" data-view="list" role="tab" aria-selected="false">List</button>
   </div>
+  <button type="button" class="bar3-item" id="export" title="Download every application as a spreadsheet">Export</button>
+  <button type="button" class="bar3-go" id="add-open">+ Add application</button>
+</nav>
+{% endblock %}
+
+{% block wide %}
+<div class="pl">
+  <section class="pl-main" aria-label="Applications">
+    <div class="pl-field" id="field">
+      <svg id="pl-svg" role="img" aria-labelledby="pl-title"><title id="pl-title">Applications by stage; higher in a lane moved more recently</title></svg>
+      <div class="pl-key pl-key--left" id="key-left" aria-hidden="true"></div>
+      <div class="pl-key pl-key--right" id="key-right" aria-hidden="true"></div>
+      <div class="pl-tip" id="tip" hidden></div>
+      <p class="pl-empty" id="empty" hidden>No applications yet. Save postings in Survey, or use + Add application.</p>
+    </div>
+    <div class="pl-list" id="list" hidden></div>
+  </section>
+  <aside class="pl-panel" id="panel" aria-live="polite" hidden></aside>
+  <div class="pl-toast" id="toast" role="status" hidden></div>
 </div>
 
 <style>
-  /* ── Board ─────────────────────────────────────────────────────────────── */
-  .kanban-board {
-    display: flex;
-    gap: 0.65rem;
-    overflow-x: auto;
-    align-items: flex-start;
-    padding-bottom: 0.5rem;
-    margin: 0 -1rem;
-    padding-left: 1rem;
-    padding-right: 1rem;
-  }
+  .pl, .bar3 { --ink:#1a1916; --ink2:#5c5a55; --ink3:#8a857c; --line:#d4cfc7; --hair:#e9e5dd; --paper:#fffefb; --bg:#faf9f7; --surface:#f0ede7;
+               --ok:#2d6a4f; --miss:#b42318; --tang:#c47f00;
+               --mono:'JetBrains Mono', ui-monospace, Menlo, monospace; --serif:'Source Serif 4', Georgia, serif; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 
-  .kanban-col {
-    flex: 1 1 0;
-    min-width: 170px;
-    background: #f0f2f5;
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-  }
+  /* ── Third bar ─────────────────────────────────────────────────────── */
+  .bar3 { display:flex; align-items:center; gap:4px; padding:7px 20px; min-height:44px; box-sizing:border-box; flex-wrap:wrap;
+          background:var(--bg); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+  .bar3-stat { padding:6px 10px; font:500 12px var(--mono); color:var(--ink2); white-space:nowrap; }
+  .bar3-stat b { color:var(--ink); font-weight:700; }
+  .bar3-spacer { flex:1; }
+  .bar3-views { display:flex; gap:2px; margin:0 4px; }
+  html body .bar3-item { all:unset; box-sizing:border-box; cursor:pointer; padding:6px 12px; border-radius:6px; white-space:nowrap;
+                         font:500 12px var(--mono) !important; color:var(--ink2) !important; }
+  html body .bar3-item:hover { background:var(--surface); }
+  html body .bar3-item.is-on { color:var(--ok) !important; background:color-mix(in srgb, var(--ok) 10%, transparent); }
+  html body .bar3-go { all:unset; box-sizing:border-box; cursor:pointer; padding:7px 14px; border-radius:999px; white-space:nowrap; margin-left:6px;
+                       font:600 12px var(--mono) !important; background:var(--ok); color:#fff !important; }
+  html body .bar3-go:hover { background:#235840; }
+  .bar3-find input { width:200px; margin:0 4px 0 0; padding:5px 10px !important; font:12px var(--mono) !important; box-sizing:border-box; height:auto !important;
+                     border:1px solid var(--line) !important; border-radius:999px !important; background:var(--paper) !important; }
 
-  .kanban-col.drag-over {
-    background: #dde5f5;
-    outline: 2px dashed #3498db;
-    outline-offset: -2px;
-  }
+  /* ── Layout: the field fills the page; the drawer opens over its edge ─ */
+  .pl { position:relative; height:calc(100vh - 44px); font-family:var(--serif); color:var(--ink); }
+  .pl-main, .pl-field { position:absolute; inset:0; }
+  .pl-field svg#pl-svg { width:100%; height:100%; display:block; position:relative; z-index:1; }
+  .pl-empty { position:absolute; top:45%; width:100%; text-align:center; color:var(--ink3); z-index:2; }
 
-  .kanban-col-header {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.6rem 0.7rem 0.45rem;
-    border-bottom: 1px solid rgba(0,0,0,0.06);
-    border-radius: 8px 8px 0 0;
-  }
+  /* Lanes */
+  .lane-wash { stroke:none; }
+  .lane-rule { stroke:#e4dfd6; stroke-width:.75; }
+  .lane-drop { fill:var(--ok); opacity:0; transition:opacity .12s; pointer-events:none; }
+  .lane-drop.is-on { opacity:.07; }
+  .lane-name { font:500 12px var(--mono); fill:var(--ink3); }
+  .lane-name tspan.n { fill:var(--ink); font-weight:700; }
+  .age-tick { font:12px var(--mono); fill:var(--ink3); opacity:.6; }
+  .age-rule { stroke:#ece8e1; stroke-width:.75; stroke-dasharray:1 5; }
 
-  .kanban-col-stripe {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
+  /* Dots */
+  .node { cursor:grab; }
+  .node:active { cursor:grabbing; }
+  .dot { transition: r .4s cubic-bezier(.2,.8,.2,1), fill .3s, stroke .3s; }
+  .dot-hit { fill:transparent; }
+  .prep { pointer-events:none; }   /* filled in its stage colour (set on the element) */
+  .node.is-dim { opacity:.15; }
+  .node.is-sel .dot { stroke:var(--ink) !important; stroke-width:2.5px !important; }
+  .pulse { fill:none; stroke:var(--tang); stroke-width:2; transform-box:fill-box; transform-origin:center; animation:pulse 2.2s ease-out infinite; pointer-events:none; }
+  @keyframes pulse { 0% { transform:scale(1); opacity:.9; } 100% { transform:scale(2.5); opacity:0; } }
+  @media (prefers-reduced-motion: reduce) { .pulse { animation:none; opacity:.8; } .dot { transition:none; } }
 
-  .kanban-col-title {
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: #555;
-    flex: 1;
-  }
+  /* Key, faint, along the foot */
+  .pl-key { position:absolute; bottom:10px; z-index:0; pointer-events:none; opacity:.55; display:flex; gap:18px; }
+  .pl-key--left { left:20px; } .pl-key--right { right:20px; }
+  .pl-key div { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--ink2); white-space:nowrap; }
 
-  .kanban-col-count {
-    font-size: 0.68rem;
-    font-weight: 700;
-    background: rgba(0,0,0,0.09);
-    color: #666;
-    border-radius: 8px;
-    padding: 0.05rem 0.4rem;
-    min-width: 18px;
-    text-align: center;
-  }
+  /* Tooltip */
+  .pl-tip { position:absolute; z-index:6; pointer-events:none; max-width:300px; padding:10px 12px; border-radius:8px; background:#1a1916; color:#ece9e2;
+            box-shadow:0 6px 20px rgba(0,0,0,.25); font:13px/1.45 var(--serif); }
+  .pl-tip b { display:block; font-size:15px; color:#fff; margin-bottom:1px; }
+  .pl-tip .co { color:#d9d5cc; }
+  .pl-tip .k { font:12px var(--mono); color:#a7abb6; display:block; margin-top:5px; }
+  .pl-tip .steps { font:12px var(--mono); color:#a7abb6; display:block; margin-top:2px; letter-spacing:.04em; }
+  .pl-tip .steps i { font-style:normal; color:#7fd1a5; }
 
-  .kanban-cards {
-    padding: 0.45rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    min-height: 80px;
-    overflow-y: auto;
-    max-height: 65vh;
-  }
+  /* Drawer */
+  .pl-panel { position:absolute; top:0; right:0; bottom:0; width:380px; max-width:100%; z-index:10; box-sizing:border-box;
+              background:var(--paper); border-left:1px solid var(--line); box-shadow:-12px 0 32px rgba(26,25,22,.08); overflow:auto; padding:20px 22px 28px; }
+  .pl-panel[hidden] { display:none; }
+  .pl-panel h2 { font:600 18px/1.3 var(--serif) !important; margin:0 0 4px; padding-right:60px; }
+  .pl-panel h3 { font:600 12px var(--mono) !important; color:var(--ink3) !important; letter-spacing:.02em; margin:22px 0 8px; text-transform:none; }
+  .pl-panel p { margin:0 0 6px; }
+  .pl-panel .pl-panel-co { color:var(--ink2); }
+  .pl-panel a { color:var(--ok); text-decoration:none; }
+  .pl-panel a:hover { text-decoration:underline; }
+  .pl-panel p.muted, .pl-panel .muted { color:var(--ink3); font-size:13px; }
+  html body .pl-close { all:unset; position:absolute; top:18px; right:18px; cursor:pointer; padding:4px 6px; border-radius:6px; font:500 12px var(--mono) !important; color:var(--ink2) !important; }
+  html body .pl-close:hover { background:var(--surface); }
 
-  .kanban-empty {
-    text-align: center;
-    color: #bbb;
-    font-size: 0.75rem;
-    padding: 1.2rem 0.5rem;
-    border: 2px dashed #d8dce2;
-    border-radius: 6px;
-    pointer-events: none;
-  }
+  .stages { display:flex; flex-wrap:wrap; gap:4px; }
+  html body .stage-btn { all:unset; box-sizing:border-box; cursor:pointer; padding:5px 10px; border-radius:999px; border:1px solid var(--line); background:var(--paper);
+                         font:500 12px var(--mono) !important; color:var(--ink2) !important; }
+  html body .stage-btn:hover { border-color:var(--ink3); color:var(--ink) !important; }
+  html body .stage-btn.is-on { color:#fff !important; border-color:transparent; }
+  html body .stage-btn.is-decline { color:var(--miss) !important; }
+  html body .stage-btn.is-decline.is-on { color:#fff !important; background:#a39c90; }
+  .pl-panel p.keys { margin-top:8px; font:12px var(--mono); color:var(--ink3); }
+  .facts { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:15px; margin:0; }
+  .facts dt { font:12px var(--mono); color:var(--ink3); padding-top:3px; }
+  .facts dd { margin:0; }
+  .checks { list-style:none; margin:0; padding:0; }
+  .checks li { display:flex; gap:8px; align-items:baseline; padding:3px 0; font-size:15px; color:var(--ink2); }
+  .checks li.done { color:var(--ink); }
+  .checks li span { font:12px var(--mono); width:14px; color:var(--ink3); }
+  .checks li.done span { color:var(--ok); }
+  .pl-panel textarea, .pl-panel input[type=text], .pl-panel input[type=url], .pl-panel select { width:100%; box-sizing:border-box; margin:0 !important; }
+  .pl-panel textarea { min-height:80px; resize:vertical; }
+  .pl-form { display:flex; flex-direction:column; gap:8px; }
+  .pl-form label { font:12px var(--mono); color:var(--ink3); margin-bottom:-4px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:12px; }
+  html body .pl-btn { all:unset; box-sizing:border-box; cursor:pointer; padding:7px 14px; border-radius:999px; white-space:nowrap;
+                      font:600 12px var(--mono) !important; border:1px solid var(--line); background:var(--paper); color:var(--ink2) !important; }
+  html body .pl-btn:hover { background:var(--surface); }
+  html body .pl-btn--solid { background:var(--ok); border-color:var(--ok); color:#fff !important; }
+  html body .pl-btn--solid:hover { background:#235840; }
+  html body .pl-btn--quiet { border-color:transparent; background:none; color:var(--ink3) !important; padding:7px 8px; }
+  html body .pl-btn--danger { color:var(--miss) !important; }
+  html body .pl-btn:disabled { opacity:.5; cursor:default; }
+  .pl-panel p.saved-note { font:12px var(--mono); color:var(--ok); min-height:1em; margin-top:4px; }
+  .pl-panel p.err { color:var(--miss); font-size:13px; }
 
-  /* ── Rejected tray ──────────────────────────────────────────────────────── */
-  .rejected-section {
-    margin-top: 0.75rem;
-    background: #f0f2f5;
-    border-radius: 8px;
-  }
+  /* Toast: what just changed, with Undo */
+  .pl-toast { position:absolute; left:50%; bottom:56px; transform:translateX(-50%); z-index:12; display:flex; gap:12px; align-items:center;
+              padding:9px 10px 9px 16px; border-radius:999px; background:#1a1916; color:#ece9e2; font:13px var(--serif); box-shadow:0 6px 20px rgba(0,0,0,.25); white-space:nowrap; }
+  .pl-toast[hidden] { display:none; }
+  html body .pl-toast button { all:unset; cursor:pointer; padding:3px 10px; border-radius:999px; font:600 12px var(--mono) !important; color:#7fd1a5 !important; }
+  html body .pl-toast button:hover { background:rgba(255,255,255,.08); }
 
-  .rejected-section.drag-over {
-    background: #fdf0ef;
-    outline: 2px dashed #e74c3c;
-    outline-offset: -2px;
-  }
-
-  .rejected-cards {
-    display: flex;
-    gap: 0.35rem;
-    overflow-x: auto;
-    padding: 0.45rem;
-    min-height: 60px;
-    align-items: flex-start;
-  }
-
-  .rejected-cards .kanban-empty { flex: 1; }
-  .rejected-cards .k-card { flex: 0 0 192px; }
-
-  /* ── Cards ─────────────────────────────────────────────────────────────── */
-  .k-card {
-    background: white;
-    border-radius: 6px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.04);
-    border-top: 2px solid #3498db;
-    padding: 0.4rem 0.5rem 0.35rem;
-    cursor: grab;
-    transition: box-shadow 0.12s, transform 0.1s;
-    position: relative;
-  }
-
-  .k-card:hover {
-    box-shadow: 0 3px 8px rgba(0,0,0,0.11), 0 0 0 1px rgba(0,0,0,0.04);
-    transform: translateY(-1px);
-  }
-
-  .k-card:active { cursor: grabbing; }
-
-  .k-card.dragging {
-    opacity: 0.25;
-    transform: scale(0.95);
-    box-shadow: none;
-  }
-
-  .k-card.applied      { border-top-color: #27ae60; }
-  .k-card.rejected     { border-top-color: #e74c3c; opacity: 0.7; }
-  .k-card.interviewing { border-top-color: #f39c12; }
-  .k-card.offer        { border-top-color: #8e44ad; }
-
-  .k-title {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #2c3e50;
-    line-height: 1.3;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-bottom: 0.1rem;
-  }
-
-  .k-company {
-    font-size: 0.68rem;
-    color: #7f8c8d;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-bottom: 0.25rem;
-  }
-
-  .k-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding-top: 0.25rem;
-    border-top: 1px solid #f2f3f5;
-  }
-
-  .k-link {
-    font-size: 0.68rem;
-    color: #3498db;
-    text-decoration: none;
-    font-weight: 500;
-  }
-  .k-link:hover { text-decoration: underline; }
-
-  .k-del {
-    margin-left: auto;
-    font-size: 0.7rem;
-    color: #ccc;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0.05rem 0.25rem;
-    border-radius: 3px;
-    line-height: 1;
-    transition: color 0.12s, background 0.12s;
-  }
-  .k-del:hover { color: #e74c3c; background: #fdf0ef; }
-
-  /* ── Add Job Modal ──────────────────────────────────────────────────────── */
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.45);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .modal-box {
-    background: white;
-    border-radius: 10px;
-    padding: 1.5rem;
-    width: 400px;
-    max-width: 92vw;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-  }
-
-  .modal-box h3 {
-    margin: 0 0 1rem;
-    font-size: 1rem;
-    color: #2c3e50;
-  }
-
-  .modal-field {
-    margin-bottom: 0.75rem;
-  }
-
-  .modal-field label {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #555;
-    margin-bottom: 0.25rem;
-  }
-
-  .modal-field input,
-  .modal-field select,
-  .modal-field textarea {
-    font-size: 0.85rem;
-    padding: 0.45rem 0.6rem;
-  }
-
-  .modal-field textarea {
-    min-height: 60px;
-    resize: vertical;
-  }
-
-  .modal-actions {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: flex-end;
-    margin-top: 1rem;
-  }
-
-  .modal-actions button {
-    font-size: 0.85rem;
-    padding: 0.4rem 1rem;
-  }
+  /* List view */
+  .pl-list { position:absolute; inset:0; overflow:auto; padding:8px 24px 40px; }
+  .pl-list h3 { font:600 12px var(--mono) !important; color:var(--ink3) !important; margin:22px 0 4px; display:flex; align-items:center; gap:8px; text-transform:none; }
+  .pl-list h3 i { width:8px; height:8px; border-radius:50%; display:inline-block; }
+  table.pl-table { width:100%; table-layout:fixed; border-collapse:collapse; background:none !important; border:0 !important; box-shadow:none !important; margin:0; }
+  .pl-table td { padding:9px 8px !important; border:0 !important; border-bottom:1px solid var(--hair) !important; vertical-align:middle; overflow:hidden; }
+  .pl-table tr:hover > td { background:rgba(240,237,231,.45); cursor:pointer; }
+  .pl-table tr.is-dim { display:none; }
+  .pl-table col.c-t { width:auto; } .pl-table col.c-c { width:22%; } .pl-table col.c-a { width:12%; } .pl-table col.c-p { width:10%; } .pl-table col.c-s { width:150px; }
+  .pl-page .pl-table td.age, .pl-list .pl-table td.age, .pl-list .pl-table td.prep { font:12px var(--mono); color:var(--ink3); white-space:nowrap; }
+  .pl-list .pl-table td.age.is-quiet { color:#b5642a; }
+  .pl-table .t { font-weight:600; }
+  .pl-table select { margin:0 !important; padding:3px 6px !important; font:12px var(--mono) !important; width:100%; height:auto !important; }
 </style>
 
-<!-- Main 4-column kanban board -->
-<div id="pipeline" class="kanban-board">
-  <p class="text-muted" style="padding:1rem;">Loading pipeline…</p>
-</div>
-
-<!-- Rejected tray -->
-<div id="rejected-section" class="rejected-section" style="display:none;">
-  <div class="kanban-col-header" style="border-radius:8px 8px 0 0;">
-    <span class="kanban-col-stripe" style="background:#e74c3c;"></span>
-    <span class="kanban-col-title">Rejected</span>
-    <span class="kanban-col-count" id="count-rejected">0</span>
-  </div>
-  <div id="rejected-cards" class="rejected-cards">
-    <div class="kanban-empty">Drop cards here</div>
-  </div>
-</div>
-
-<!-- Add Job Modal -->
-<div id="add-job-modal" class="modal-overlay" style="display:none;" onclick="handleModalClick(event)">
-  <div class="modal-box">
-    <h3>Add Job Manually</h3>
-    <form id="add-job-form" onsubmit="submitAddJob(event)">
-      <div class="modal-field">
-        <label>Position Title *</label>
-        <input type="text" id="aj-title" placeholder="e.g. Senior Learning Designer" required>
-      </div>
-      <div class="modal-field">
-        <label>Company *</label>
-        <input type="text" id="aj-company" placeholder="e.g. Acme Corp" required>
-      </div>
-      <div class="modal-field">
-        <label>Job URL *</label>
-        <input type="url" id="aj-url" placeholder="https://…" required>
-      </div>
-      <div class="modal-field">
-        <label>Status</label>
-        <select id="aj-status">
-          <option value="saved">Saved</option>
-          <option value="preparing">Preparing</option>
-          <option value="ready">Ready</option>
-          <option value="applied">Applied</option>
-          <option value="interviewing">Interviewing</option>
-          <option value="offer">Offer</option>
-          <option value="rejected">Rejected</option>
-        </select>
-      </div>
-      <div class="modal-field">
-        <label>Salary <span style="font-weight:400;color:#aaa;">(optional)</span></label>
-        <input type="text" id="aj-salary" placeholder="e.g. $90,000/yr">
-      </div>
-      <div class="modal-field">
-        <label>Posting <span style="font-weight:400;color:#aaa;">(optional: paste it, or leave blank to fetch it from the URL)</span></label>
-        <textarea id="aj-posting" rows="5" placeholder="Paste the full job posting…"></textarea>
-      </div>
-      <div class="modal-field">
-        <label>Notes <span style="font-weight:400;color:#aaa;">(optional)</span></label>
-        <textarea id="aj-notes" placeholder="Any notes…"></textarea>
-      </div>
-      <div id="aj-error" style="font-size:0.8rem;color:#e74c3c;margin-bottom:0.5rem;display:none;"></div>
-      <div class="modal-actions">
-        <button type="button" class="secondary" onclick="closeAddJobModal()">Cancel</button>
-        <button type="submit" id="aj-submit">Add to Pipeline</button>
-      </div>
-    </form>
-  </div>
-</div>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script>
-  // Inside the portfolio studio, a card can hand its job to Render.
-  const IN_STUDIO = window.parent !== window;
-  function prepareJob(id) { parent.postMessage({ source: 'search', action: 'prepare', pipelineId: id }, '*'); }
+  // ── Stages ────────────────────────────────────────────────────────────────
+  // Colours match the Overview's bands: preparing (violet), applied (green), talking (tangerine).
+  const STAGES = [
+    { key: 'saved',        label: 'Saved',        color: '#5b5fc7', quiet: 7 },
+    { key: 'preparing',    label: 'Preparing',    color: '#5b5fc7', quiet: 7 },
+    { key: 'ready',        label: 'Ready',        color: '#5b5fc7', quiet: 3 },
+    { key: 'applied',      label: 'Applied',      color: '#1f8a5a', quiet: 21 },
+    { key: 'interviewing', label: 'Interviewing', color: '#c47f00', quiet: 10 },
+    { key: 'offer',        label: 'Offer',        color: '#c47f00', quiet: 5 },
+  ];
+  const DECLINED = { key: 'rejected', label: 'Declined', color: '#c9c3b8', quiet: Infinity };
+  const STAGE = Object.fromEntries([...STAGES, DECLINED].map(s => [s.key, s]));
+  const ORDER = STAGES.map(s => s.key);
+  const PREP_STAGES = new Set(['saved', 'preparing', 'ready']);
+  const STEP_NAME = { posting: 'Posting', suggestions: 'Resume suggestions', resume: 'Resume updated', letter: 'Letter drafted', exported: 'Letter exported' };
+  const SURFACE = '#faf9f7', DAY = 864e5;
+  const embedded = document.body.classList.contains('embedded');
 
-  let pipelineData   = null;
-  let draggingJobId  = null;
-  let draggingStatus = null;
+  let items = [], byId = {}, version = null, selected = null, mode = null, view = 'field';
+  let sim = null, nodesSel = null, geo = null, layoutKey = '';
+  const pulseUntil = new Map();   // id → time: pulse what just moved
+  const mine = new Map();         // id → time: moves made here (so the poll doesn't announce them)
 
-  const STATUS_META = {
-    saved:        { label: 'Saved',        color: '#3498db' },
-    preparing:    { label: 'Preparing',    color: '#b5642a' },
-    ready:        { label: 'Ready',        color: '#0d7d7d' },
-    applied:      { label: 'Applied',      color: '#27ae60' },
-    interviewing: { label: 'Interviewing', color: '#f39c12' },
-    offer:        { label: 'Offer',        color: '#8e44ad' },
-    rejected:     { label: 'Rejected',     color: '#e74c3c' },
-  };
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const when = iso => iso ? new Date(iso.endsWith('Z') ? iso : iso + 'Z') : null;
+  const daysIn = a => { const d = when(a.stage_changed_date || a.saved_date); return d ? Math.max(0, (Date.now() - d) / DAY) : 0; };
+  const span = d => d < 1 ? 'today' : d < 2 ? '1 day' : d < 14 ? `${Math.floor(d)} days` : d < 60 ? `${Math.floor(d / 7)} weeks` : `${Math.floor(d / 30)} months`;
+  const fmtDate = iso => { const d = when(iso); return d ? d.toLocaleDateString([], { month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }) : '—'; };
+  const stageOf = a => STAGE[a.status] ? a.status : 'saved';
+  const isQuiet = a => daysIn(a) > STAGE[stageOf(a)].quiet;
+  const isPulsing = a => (pulseUntil.get(a.id) || 0) > Date.now() || daysIn(a) < 1 && a.status !== 'rejected';
 
-  const MAIN_STATUSES = ['saved', 'preparing', 'ready', 'applied', 'interviewing', 'offer'];
-  const ALL_STATUSES  = ['saved', 'preparing', 'ready', 'applied', 'interviewing', 'offer', 'rejected'];
-
-  // ── Load & render ─────────────────────────────────────────────────────────
-
-  function loadPipeline() {
-    fetch('/api/pipeline')
-      .then(r => r.json())
-      .then(data => { pipelineData = data; renderBoard(); })
-      .catch(() => {
-        document.getElementById('pipeline').innerHTML =
-          '<p class="text-danger" style="padding:1rem;">Error loading pipeline</p>';
-      });
-  }
-
-  function renderBoard() {
-    const board = document.getElementById('pipeline');
-    board.innerHTML = '';
-
-    MAIN_STATUSES.forEach(status => {
-      const jobs = pipelineData[status] || [];
-      const meta = STATUS_META[status];
-
-      const col = document.createElement('div');
-      col.className = 'kanban-col';
-      col.dataset.status = status;
-      col.innerHTML = `
-        <div class="kanban-col-header">
-          <span class="kanban-col-stripe" style="background:${meta.color};"></span>
-          <span class="kanban-col-title">${meta.label}</span>
-          <span class="kanban-col-count" id="count-${status}">${jobs.length}</span>
-        </div>`;
-
-      const cardsEl = document.createElement('div');
-      cardsEl.className = 'kanban-cards';
-      if (!jobs.length) {
-        cardsEl.innerHTML = '<div class="kanban-empty">Drop cards here</div>';
-      } else {
-        jobs.forEach(job => cardsEl.appendChild(buildCard(job, status)));
-      }
-
-      wireDropZone(col, status);
-      col.appendChild(cardsEl);
-      board.appendChild(col);
-    });
-
-    // Rejected tray
-    const rejectedJobs    = pipelineData['rejected'] || [];
-    const rejectedSection = document.getElementById('rejected-section');
-    const rejectedCards   = document.getElementById('rejected-cards');
-    document.getElementById('count-rejected').textContent = rejectedJobs.length;
-    rejectedSection.style.display = '';
-    rejectedCards.innerHTML = '';
-    if (!rejectedJobs.length) {
-      rejectedCards.innerHTML = '<div class="kanban-empty">Drop cards here</div>';
-    } else {
-      rejectedJobs.forEach(job => rejectedCards.appendChild(buildCard(job, 'rejected')));
+  // ── Load, and stay current ────────────────────────────────────────────────
+  async function load(announce = false) {
+    const d = await (await fetch('/api/pipeline/field')).json();
+    const before = byId;
+    version = d.version;
+    items = d.items;
+    byId = Object.fromEntries(items.map(a => [a.id, a]));
+    // What moved elsewhere (Render, another tab) pulses, and says so.
+    const moved = items.filter(a => before[a.id] && before[a.id].status !== a.status && !((mine.get(a.id) || 0) > Date.now() - 15000));
+    const added = items.filter(a => Object.keys(before).length && !before[a.id] && !((mine.get(a.id) || 0) > Date.now() - 15000));
+    [...moved, ...added].forEach(a => pulseUntil.set(a.id, Date.now() + 60000));
+    if (announce && moved.length + added.length) {
+      const a = moved[0] || added[0];
+      toast(moved.length + added.length === 1
+        ? (moved.length ? `${a.company}: ${STAGE[before[a.id].status]?.label || before[a.id].status} → ${STAGE[stageOf(a)].label}` : `Added: ${a.title} · ${a.company}`)
+        : `${moved.length + added.length} applications changed`);
     }
-    wireDropZone(rejectedSection, 'rejected');
+    render();
+  }
+  async function poll() {
+    if (document.hidden) return;
+    try {
+      const v = (await (await fetch('/api/pipeline/version')).json()).version;
+      if (v !== version) await load(true);
+    } catch { /* the next poll tries again */ }
+  }
+  setInterval(poll, 5000);
+  document.addEventListener('visibilitychange', poll);
+
+  function render() {
+    counts();
+    if (view === 'field') draw(); else renderList();
+    renderPanel();
+    applyFind();
+  }
+  function counts() {
+    const live = items.filter(a => a.status !== 'rejected');
+    document.getElementById('n-prep').textContent = live.filter(a => PREP_STAGES.has(stageOf(a))).length;
+    document.getElementById('n-applied').textContent = live.filter(a => a.status === 'applied').length;
+    document.getElementById('n-talking').textContent = live.filter(a => a.status === 'interviewing' || a.status === 'offer').length;
+    document.getElementById('n-quiet').textContent = live.filter(isQuiet).length;
   }
 
-  function wireDropZone(el, status) {
-    el.addEventListener('dragover', e => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      el.classList.add('drag-over');
+  // ── Geometry: six lanes across, declined along the foot, key below ───────
+  function geometry(W, H) {
+    const pad = 20, top = 40, keyH = 40, gap = 14;
+    const stripH = Math.max(64, Math.min(120, H * .15));
+    const y1 = H - keyH - stripH - gap;
+    const n = Object.fromEntries(ORDER.map(k => [k, items.filter(a => stageOf(a) === k).length]));
+    // Busier lanes get a little more room.
+    const weight = ORDER.map(k => 1 + Math.sqrt(n[k]) / 3);
+    const total = weight.reduce((s, w) => s + w, 0);
+    let x = pad;
+    const lanes = ORDER.map((k, i) => { const w = (W - 2 * pad) * weight[i] / total; const l = { key: k, x0: x, x1: x + w, y0: top, y1, n: n[k] }; x += w; return l; });
+    const strip = { key: 'rejected', x0: pad, x1: W - pad, y0: y1 + gap, y1: y1 + gap + stripH, n: items.filter(a => a.status === 'rejected').length };
+    return { W, H, pad, top, lanes, strip, lane: Object.fromEntries([...lanes, strip].map(l => [l.key, l])) };
+  }
+  // Height in a lane is time since the last move: today at the top, two months and more at the bottom.
+  const AGE_MAX = 60;
+  const ageY = (l, d) => l.y0 + 18 + (l.y1 - l.y0 - 30) * Math.min(1, Math.log1p(d) / Math.log1p(AGE_MAX));
+  function laneAt(x, y) {
+    if (!geo) return null;
+    if (y >= geo.strip.y0 - 6) return 'rejected';
+    const l = geo.lanes.find(l => x >= l.x0 && x < l.x1);
+    return l ? l.key : null;
+  }
+
+  // ── The field ─────────────────────────────────────────────────────────────
+  function draw() {
+    const box = document.getElementById('field');
+    const W = box.clientWidth, H = box.clientHeight;
+    if (!W || !H) return;
+    geo = geometry(W, H);
+    document.getElementById('empty').hidden = items.length > 0;
+    const svg = d3.select('#pl-svg');
+    const key = `${W}x${H}`, resized = key !== layoutKey;
+    layoutKey = key;
+
+    // Lanes are redrawn each time (widths follow the counts); nodes persist.
+    svg.select('g.lanes').remove();
+    const lanesG = svg.insert('g', 'g.nodes').attr('class', 'lanes');
+    geo.lanes.forEach((l, i) => {
+      const s = STAGE[l.key];
+      lanesG.append('rect').attr('class', 'lane-wash').attr('x', l.x0).attr('y', l.y0).attr('width', l.x1 - l.x0).attr('height', l.y1 - l.y0)
+        .attr('fill', d3.color(s.color).copy({ opacity: i % 2 ? .035 : .055 }));
+      lanesG.append('rect').attr('class', 'lane-drop').attr('data-lane', l.key).attr('x', l.x0).attr('y', l.y0).attr('width', l.x1 - l.x0).attr('height', l.y1 - l.y0);
+      if (i) lanesG.append('line').attr('class', 'lane-rule').attr('x1', l.x0).attr('x2', l.x0).attr('y1', l.y0).attr('y2', l.y1);
+      const t = lanesG.append('text').attr('class', 'lane-name').attr('x', l.x0 + 10).attr('y', l.y0 - 12);
+      t.append('tspan').text(s.label + ' ');
+      t.append('tspan').attr('class', 'n').text(l.n || '');
     });
-    el.addEventListener('dragleave', e => {
-      if (!el.contains(e.relatedTarget)) el.classList.remove('drag-over');
-    });
-    el.addEventListener('drop', e => {
-      e.preventDefault();
-      el.classList.remove('drag-over');
-      if (draggingJobId && status !== draggingStatus)
-        updateJobStatus(draggingJobId, status);
-    });
-  }
-
-  function buildCard(job, status) {
-    const card = document.createElement('div');
-    card.className = `k-card ${status}`;
-    card.dataset.jobId = job.id;
-    card.draggable = true;
-
-    card.innerHTML = `
-      <div class="k-title" title="${escH(job.title)}">${escH(job.title)}</div>
-      <div class="k-company" title="${escH(job.company)}">${escH(job.company)}</div>
-      <div class="k-actions">
-        <a class="k-link" href="${escH(job.url)}" target="_blank">View ↗</a>
-        ${IN_STUDIO ? `<button class="k-prepare" onclick="prepareJob(${job.id})" title="Resume suggestions and a cover letter for this job">Prepare →</button>` : ''}
-        <button class="k-del" onclick="deleteJob(${job.id})" title="Remove">✕</button>
-      </div>`;
-
-    card.addEventListener('dragstart', e => {
-      draggingJobId  = job.id;
-      draggingStatus = status;
-      e.dataTransfer.effectAllowed = 'move';
-      requestAnimationFrame(() => card.classList.add('dragging'));
-    });
-    card.addEventListener('dragend', () => {
-      card.classList.remove('dragging');
-      draggingJobId  = null;
-      draggingStatus = null;
+    const st = geo.strip;
+    lanesG.append('rect').attr('class', 'lane-wash').attr('x', st.x0).attr('y', st.y0).attr('width', st.x1 - st.x0).attr('height', st.y1 - st.y0).attr('rx', 10)
+      .attr('fill', 'rgba(201,195,184,.12)');
+    lanesG.append('rect').attr('class', 'lane-drop').attr('data-lane', 'rejected').attr('x', st.x0).attr('y', st.y0).attr('width', st.x1 - st.x0).attr('height', st.y1 - st.y0).attr('rx', 10);
+    const dt = lanesG.append('text').attr('class', 'lane-name').attr('x', st.x0 + 10).attr('y', st.y0 + 18);
+    dt.append('tspan').text('Declined '); dt.append('tspan').attr('class', 'n').text(st.n || '');
+    // Age guides, faint, across the lanes.
+    const l0 = geo.lanes[0];
+    [[0, 'today'], [7, '1 wk'], [30, '1 mo']].forEach(([d, label]) => {
+      const y = ageY(l0, d);
+      lanesG.append('line').attr('class', 'age-rule').attr('x1', geo.pad).attr('x2', W - geo.pad).attr('y1', y).attr('y2', y);
+      lanesG.append('text').attr('class', 'age-tick').attr('x', W - geo.pad - 4).attr('y', y - 4).attr('text-anchor', 'end').text(label);
     });
 
-    return card;
+    // Size: company interest, scaled down together when the field gets crowded.
+    const live = items.filter(a => a.status !== 'rejected');
+    const base = a => 4 + (a.interest || 0) * 1.25;
+    const area = geo.lanes.reduce((s, l) => s + (l.x1 - l.x0) * (l.y1 - l.y0), 0);
+    const need = live.reduce((s, a) => s + Math.PI * (base(a) + 2) ** 2, 0);
+    const k = Math.max(.45, Math.min(1, Math.sqrt(area * .32 / Math.max(need, 1))));
+    const rejected = items.filter(a => a.status === 'rejected').sort((a, b) => (when(a.stage_changed_date) || 0) - (when(b.stage_changed_date) || 0));
+    const rank = new Map(rejected.map((a, i) => [a.id, i]));
+
+    const old = new Map((sim ? sim.nodes() : []).map(n => [n.id, n]));
+    const nodes = items.map(a => {
+      const n = old.get(a.id) || { id: a.id };
+      n.a = a; n.stage = stageOf(a);
+      n.r = n.stage === 'rejected' ? 4 : Math.max(3.5, base(a) * k);
+      const l = geo.lane[n.stage];
+      n.tx = n.stage === 'rejected' ? st.x0 + 90 + (st.x1 - st.x0 - 110) * ((rank.get(a.id) + .5) / Math.max(rejected.length, 1)) : (l.x0 + l.x1) / 2;
+      n.ty = n.stage === 'rejected' ? (st.y0 + st.y1) / 2 + 4 : ageY(l, daysIn(a));
+      if (n.x == null || resized && !old.has(a.id)) { n.x = n.tx + (Math.random() - .5) * 20; n.y = n.ty + (Math.random() - .5) * 10; }
+      return n;
+    });
+
+    let nodesG = svg.select('g.nodes');
+    if (nodesG.empty()) nodesG = svg.append('g').attr('class', 'nodes');
+    const arc = d3.arc();
+    nodesSel = nodesG.selectAll('g.node').data(nodes, d => d.id).join(enter => {
+      const g = enter.append('g').attr('class', 'node');
+      g.append('circle').attr('class', 'pulse');
+      g.append('path').attr('class', 'prep');
+      g.append('circle').attr('class', 'dot');
+      g.append('circle').attr('class', 'dot-hit');
+      return g;
+    });
+    nodesSel.select('.dot')
+      .attr('r', d => d.r)
+      .attr('fill', d => isQuiet(d.a) ? SURFACE : STAGE[d.stage].color)
+      .attr('stroke', d => isQuiet(d.a) ? STAGE[d.stage].color : SURFACE)
+      .attr('stroke-width', 2);
+    nodesSel.select('.dot-hit').attr('r', d => Math.max(d.r + 4, 9));
+    nodesSel.select('.pulse').attr('r', d => d.r).style('display', d => isPulsing(d.a) ? null : 'none');
+    nodesSel.select('.prep')
+      .attr('d', d => PREP_STAGES.has(d.stage) && d.a.prep ? arc({ innerRadius: d.r + 2.2, outerRadius: d.r + 3.6, startAngle: 0, endAngle: 2 * Math.PI * d.a.prep / d.a.prep_steps }) : null)
+      .attr('fill', d => STAGE[d.stage].color);
+    nodesSel.classed('is-sel', d => d.id === selected)
+      .on('mousemove', (e, d) => showTip(e, d.a))
+      .on('mouseleave', hideTip)
+      .on('click', (e, d) => { e.stopPropagation(); select(d.id === selected ? null : d.id); })
+      .call(d3.drag().clickDistance(4)
+        .on('start', (e, d) => { hideTip(); sim.alphaTarget(.25).restart(); d.fx = d.x; d.fy = d.y; })
+        .on('drag', (e, d) => {
+          d.fx = e.x; d.fy = e.y;
+          const target = laneAt(e.x, e.y);
+          d3.selectAll('.lane-drop').classed('is-on', function () { return this.dataset.lane === target && target !== d.stage; });
+        })
+        .on('end', (e, d) => {
+          sim.alphaTarget(0); d.fx = null; d.fy = null;
+          d3.selectAll('.lane-drop').classed('is-on', false);
+          const target = laneAt(e.x, e.y);
+          if (target && target !== d.stage) move(d.id, target);
+        }));
+
+    if (!sim) {
+      sim = d3.forceSimulation().on('tick', tick);
+    }
+    sim.nodes(nodes)
+      .force('x', d3.forceX(d => d.tx).strength(d => d.stage === 'rejected' ? .5 : .12))
+      .force('y', d3.forceY(d => d.ty).strength(.35))
+      .force('c', d3.forceCollide(d => d.r + (PREP_STAGES.has(d.stage) ? 4 : 1.5)).iterations(2))
+      .alpha(resized ? 1 : .7).restart();
+    renderKey();
   }
-
-  // ── Pipeline actions ──────────────────────────────────────────────────────
-
-  function updateJobStatus(jobId, newStatus) {
-    fetch(`/api/pipeline/${jobId}`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({status: newStatus}),
-    })
-    .then(r => r.json())
-    .then(() => loadPipeline())
-    .catch(() => alert('Error updating job status'));
-  }
-
-  function deleteJob(jobId) {
-    if (!confirm('Remove this job from pipeline?')) return;
-    fetch(`/api/pipeline/${jobId}`, {method: 'DELETE'})
-      .then(() => loadPipeline())
-      .catch(() => alert('Error removing job'));
-  }
-
-  // ── Add Job Modal ─────────────────────────────────────────────────────────
-
-  function openAddJobModal() {
-    document.getElementById('add-job-form').reset();
-    document.getElementById('aj-error').style.display = 'none';
-    document.getElementById('add-job-modal').style.display = 'flex';
-    document.getElementById('aj-title').focus();
-  }
-
-  function closeAddJobModal() {
-    document.getElementById('add-job-modal').style.display = 'none';
-  }
-
-  function handleModalClick(e) {
-    if (e.target === document.getElementById('add-job-modal')) closeAddJobModal();
-  }
-
-  function submitAddJob(e) {
-    e.preventDefault();
-    const btn     = document.getElementById('aj-submit');
-    const errEl   = document.getElementById('aj-error');
-    const payload = {
-      title:   document.getElementById('aj-title').value.trim(),
-      company: document.getElementById('aj-company').value.trim(),
-      url:     document.getElementById('aj-url').value.trim(),
-      status:  document.getElementById('aj-status').value,
-      salary:  document.getElementById('aj-salary').value.trim() || null,
-      notes:   document.getElementById('aj-notes').value.trim()  || null,
-      posting_text: document.getElementById('aj-posting').value.trim() || null,
-    };
-
-    btn.disabled   = true;
-    btn.textContent = 'Adding…';
-    errEl.style.display = 'none';
-
-    fetch('/api/pipeline/add', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(payload),
-    })
-    .then(r => r.json().then(d => ({ ok: r.ok, d })))
-    .then(({ ok, d }) => {
-      if (!ok) throw new Error(d.detail || 'Error adding job');
-      closeAddJobModal();
-      loadPipeline();
-    })
-    .catch(err => {
-      errEl.textContent   = err.message;
-      errEl.style.display = 'block';
-    })
-    .finally(() => {
-      btn.disabled    = false;
-      btn.textContent = 'Add to Pipeline';
+  function tick() {
+    if (!geo) return;
+    nodesSel.attr('transform', d => {
+      if (d.fx == null) {   // keep each dot inside its lane
+        const l = geo.lane[d.stage], m = d.r + 3;
+        d.x = Math.max(l.x0 + m, Math.min(l.x1 - m, d.x));
+        d.y = Math.max(l.y0 + m, Math.min(l.y1 - m, d.y));
+      }
+      return `translate(${d.x},${d.y})`;
     });
   }
 
-  // Esc key closes modal
+  function renderKey() {
+    const dot = (fill, stroke) => `<svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="${fill}" stroke="${stroke}" stroke-width="2"/></svg>`;
+    document.getElementById('key-left').innerHTML =
+      `<div><svg width="28" height="14"><circle cx="5" cy="7" r="3" fill="#8a857c"/><circle cx="20" cy="7" r="6" fill="#8a857c"/></svg>Size: the company's interest</div>` +
+      `<div><svg width="16" height="16"><circle cx="8" cy="8" r="4.5" fill="#5b5fc7"/><path d="M8 1.5 A6.5 6.5 0 0 1 14.5 8" fill="none" stroke="#5b5fc7" stroke-width="1.5"/></svg>Arc: preparation done</div>`;
+    document.getElementById('key-right').innerHTML =
+      `<div>Higher: moved more recently</div>` +
+      `<div>${dot(SURFACE, '#1f8a5a')}Hollow: gone quiet</div>` +
+      `<div><svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="none" stroke="#c47f00" stroke-width="2"/></svg>Pulse: just moved</div>`;
+  }
+
+  // ── Hover ─────────────────────────────────────────────────────────────────
+  function stepsOf(a) {
+    const c = a.checklist || {};
+    return [['posting', a.has_posting], ['suggestions', a.has_suggestions], ['resume', !!c.resumeUpdated], ['letter', a.has_letter], ['exported', !!c.exported]];
+  }
+  function showTip(e, a) {
+    const tip = document.getElementById('tip'), box = document.getElementById('field').getBoundingClientRect();
+    const s = STAGE[stageOf(a)], d = daysIn(a);
+    const steps = PREP_STAGES.has(stageOf(a)) ? `<span class="steps">${stepsOf(a).map(([n, ok]) => ok ? `<i>✓ ${n}</i>` : `○ ${n}`).join('  ')}</span>` : '';
+    tip.innerHTML = `<b>${esc(a.title)}</b><span class="co">${esc(a.company)}</span>
+      <span class="k">${s.label} · ${d < 1 ? 'moved today' : span(d) + ' here'}${isQuiet(a) ? ' · gone quiet' : ''}${a.applied_date ? ` · applied ${fmtDate(a.applied_date)}` : ''}</span>
+      ${steps}${a.location || a.salary ? `<span class="k">${esc([a.location, a.salary].filter(Boolean).join(' · '))}</span>` : ''}`;
+    tip.hidden = false;
+    const x = e.clientX - box.left, y = e.clientY - box.top;
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.min(box.width - w - 8, x + 14) + 'px';
+    tip.style.top = (y + h + 20 > box.height ? y - h - 12 : y + 14) + 'px';
+  }
+  function hideTip() { document.getElementById('tip').hidden = true; }
+
+  // ── Moving: at once, with Undo ────────────────────────────────────────────
+  async function move(id, status, { undoable = true } = {}) {
+    const a = byId[id]; if (!a || a.status === status) return;
+    const prev = { status: a.status, stage_changed_date: a.stage_changed_date, applied_date: a.applied_date };
+    a.status = status; a.stage_changed_date = new Date().toISOString().replace('Z', '');
+    if (status === 'applied' && !a.applied_date) a.applied_date = a.stage_changed_date;
+    if (PREP_STAGES.has(status)) a.applied_date = null;
+    mine.set(id, Date.now()); pulseUntil.set(id, Date.now() + 8000);
+    render();
+    if (undoable) toast(`${a.company}: ${STAGE[stageOf({ status: prev.status })].label} → ${STAGE[stageOf(a)].label}`, () => move(id, prev.status, { undoable: false }));
+    try {
+      const r = await fetch(`/api/pipeline/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+      if (!r.ok) throw new Error(r.status);
+      const d = await r.json();
+      a.stage_changed_date = d.stage_changed_date || a.stage_changed_date; a.applied_date = d.applied_date;
+      version = null;   // the next poll reloads quietly
+    } catch {
+      Object.assign(a, prev); render();
+      toast(`Couldn't move ${a.title}. Search didn't answer.`);
+    }
+  }
+
+  let toastT;
+  function toast(text, undo) {
+    const t = document.getElementById('toast');
+    t.innerHTML = `<span>${esc(text)}</span>${undo ? '<button type="button" data-undo>Undo</button>' : ''}`;
+    t.hidden = false;
+    if (undo) t.querySelector('[data-undo]').onclick = () => { t.hidden = true; undo(); };
+    clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, undo ? 7000 : 4000);
+  }
+
+  // ── Select and the drawer ─────────────────────────────────────────────────
+  function select(id) {
+    selected = id; mode = id == null ? null : 'item';
+    if (nodesSel) nodesSel.classed('is-sel', d => d.id === selected);
+    renderPanel();
+  }
+  function renderPanel() {
+    const panel = document.getElementById('panel');
+    if (mode === 'add') return;   // the add form keeps what's typed
+    const a = byId[selected];
+    panel.hidden = !a;
+    if (!a) { panel.innerHTML = ''; mode = null; return; }
+    const s = stageOf(a), d = daysIn(a);
+    // A live update mustn't wipe a note being typed.
+    const typing = document.activeElement && document.activeElement.id === 'notes' ? document.activeElement : null;
+    const draft = typing ? { value: typing.value, start: typing.selectionStart, end: typing.selectionEnd } : null;
+    const btn = st => `<button type="button" class="stage-btn${st.key === 'rejected' ? ' is-decline' : ''}${s === st.key ? ' is-on' : ''}" data-stage="${st.key}"
+        style="${s === st.key && st.key !== 'rejected' ? `background:${st.color}` : ''}">${st.label}</button>`;
+    panel.innerHTML = `
+      <button type="button" class="pl-close" data-act="close" aria-label="Close">Close ×</button>
+      <h2>${esc(a.title)}</h2>
+      <p class="pl-panel-co">${esc(a.company)}${a.location ? ` · ${esc(a.location)}` : ''}</p>
+      <p class="muted"><a href="${esc(a.url)}" target="_blank" rel="noopener">Open the posting ↗</a>${a.salary ? ` · ${esc(a.salary)}` : ''}</p>
+
+      <h3>Stage</h3>
+      <div class="stages">${STAGES.map(btn).join('')}${btn(DECLINED)}</div>
+      <p class="keys">← → move a stage · D declined · Esc close</p>
+
+      <dl class="facts">
+        <dt>here</dt><dd>${d < 1 ? 'moved today' : span(d)}${isQuiet(a) ? ' <span class="muted">· gone quiet</span>' : ''}</dd>
+        <dt>saved</dt><dd>${fmtDate(a.saved_date)}</dd>
+        ${a.applied_date ? `<dt>applied</dt><dd>${fmtDate(a.applied_date)}</dd>` : ''}
+        <dt>interest</dt><dd>${a.interest} of 9 <span class="muted">· the company's, set on the Overview</span></dd>
+      </dl>
+
+      <h3>Preparation · ${a.prep} of ${a.prep_steps}</h3>
+      <ul class="checks">${stepsOf(a).map(([n, ok]) => `<li class="${ok ? 'done' : ''}"><span>${ok ? '✓' : '○'}</span>${STEP_NAME[n]}</li>`).join('')}</ul>
+      ${embedded ? `<div class="row"><button type="button" class="pl-btn pl-btn--solid" data-act="prepare" title="Resume suggestions and a cover letter, in Render">Prepare in Render →</button></div>` : ''}
+
+      <h3>Notes</h3>
+      <textarea id="notes" placeholder="Who you spoke to, what's next…">${esc(a.notes || '')}</textarea>
+      <p class="saved-note" id="notes-state"></p>
+
+      <div class="row" id="remove-row"><button type="button" class="pl-btn pl-btn--quiet pl-btn--danger" data-act="remove">Remove from the pipeline</button></div>`;
+    if (draft) { const box = document.getElementById('notes'); box.value = draft.value; box.focus(); box.setSelectionRange(draft.start, draft.end); }
+  }
+
+  document.getElementById('panel').addEventListener('click', async e => {
+    const t = e.target.closest('[data-stage], [data-act]'); if (!t) return;
+    const a = byId[selected];
+    if (t.dataset.stage && a) return move(a.id, t.dataset.stage);
+    const act = t.dataset.act;
+    if (act === 'close') return closePanel();
+    if (act === 'prepare' && a) return parent.postMessage({ source: 'search', action: 'prepare', pipelineId: a.id }, '*');
+    if (act === 'remove') {
+      document.getElementById('remove-row').innerHTML = `<span class="muted">Remove it for good?</span>
+        <button type="button" class="pl-btn pl-btn--danger" data-act="remove-yes">Remove</button><button type="button" class="pl-btn pl-btn--quiet" data-act="remove-no">Keep</button>`;
+    }
+    if (act === 'remove-no') renderPanel();
+    if (act === 'remove-yes' && a) {
+      const r = await fetch(`/api/pipeline/${a.id}`, { method: 'DELETE' });
+      if (r.ok || r.status === 204) { mine.set(a.id, Date.now()); toast(`Removed ${a.title}`); select(null); await load(); }
+    }
+  });
+  // Notes save when you leave the box (or ⌘/Ctrl-Enter).
+  async function saveNotes() {
+    const a = byId[selected], box = document.getElementById('notes');
+    if (!a || !box || (a.notes || '') === box.value) return;
+    const r = await fetch(`/api/pipeline/${a.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: a.status, notes: box.value }) });
+    if (r.ok) { a.notes = box.value; const s = document.getElementById('notes-state'); if (s) s.textContent = 'Saved'; }
+  }
+  document.getElementById('panel').addEventListener('focusout', e => { if (e.target.id === 'notes') saveNotes(); });
+  document.getElementById('panel').addEventListener('keydown', e => { if (e.target.id === 'notes' && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveNotes(); } });
+
+  function closePanel() { mode = null; select(null); }
+  document.getElementById('field').addEventListener('click', () => { if (selected != null) closePanel(); });
+
+  // Keys: ← → move the selected application a stage, D declines, Esc closes.
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeAddJobModal();
+    if (e.target.closest('input, textarea, select')) return;
+    if (e.key === 'Escape') { if (mode) closePanel(); hideTip(); return; }
+    const a = byId[selected]; if (!a || mode !== 'item') return;
+    const i = ORDER.indexOf(stageOf(a));
+    if (e.key === 'ArrowRight' && a.status !== 'rejected' && i < ORDER.length - 1) { e.preventDefault(); move(a.id, ORDER[i + 1]); }
+    else if (e.key === 'ArrowLeft' && a.status !== 'rejected' && i > 0) { e.preventDefault(); move(a.id, ORDER[i - 1]); }
+    else if (e.key === 'ArrowLeft' && a.status === 'rejected') { e.preventDefault(); move(a.id, 'applied'); }
+    else if (e.key.toLowerCase() === 'd' && a.status !== 'rejected') { e.preventDefault(); move(a.id, 'rejected'); }
   });
 
-  // ── Export CSV ────────────────────────────────────────────────────────────
-
-  function exportPipelineCSV() {
-    if (!pipelineData) { alert('No pipeline data loaded yet.'); return; }
-    const all = ALL_STATUSES.flatMap(s => (pipelineData[s] || []).map(j => ({...j, status: s})));
-    if (!all.length) { alert('Pipeline is empty.'); return; }
-    const lines = [['Title','Company','Location','Salary','Status','Saved Date','Applied Date','Notes','URL'].join(',')];
-    all.forEach(j => lines.push([
-      csvCell(j.title), csvCell(j.company), csvCell(j.location), csvCell(j.salary),
-      csvCell(j.status),
-      csvCell(j.saved_date   ? new Date(j.saved_date).toLocaleDateString()   : ''),
-      csvCell(j.applied_date ? new Date(j.applied_date).toLocaleDateString() : ''),
-      csvCell(j.notes), csvCell(j.url),
-    ].join(',')));
-    const a = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(new Blob([lines.join('\n')], {type: 'text/csv;charset=utf-8;'})),
-      download: 'pipeline_export.csv',
+  // ── Adding one by hand ────────────────────────────────────────────────────
+  document.getElementById('add-open').addEventListener('click', () => {
+    selected = null; mode = 'add';
+    if (nodesSel) nodesSel.classed('is-sel', false);
+    const panel = document.getElementById('panel');
+    panel.hidden = false;
+    panel.innerHTML = `
+      <button type="button" class="pl-close" data-act="close" aria-label="Close">Close ×</button>
+      <h2>Add an application</h2>
+      <p class="muted">For a posting Survey didn't find. Saved postings from Survey arrive here by themselves.</p>
+      <form class="pl-form" id="add-form">
+        <label for="aj-title">Position</label><input type="text" id="aj-title" required placeholder="Senior Learning Designer">
+        <label for="aj-company">Company</label><input type="text" id="aj-company" required placeholder="Acme">
+        <label for="aj-url">Posting address</label><input type="url" id="aj-url" required placeholder="https://…">
+        <label for="aj-status">Stage</label>
+        <select id="aj-status">${STAGES.map(s => `<option value="${s.key}">${s.label}</option>`).join('')}</select>
+        <label for="aj-posting">Posting text <span class="muted">(optional; leave empty to fetch it)</span></label>
+        <textarea id="aj-posting" rows="4"></textarea>
+        <label for="aj-notes">Notes <span class="muted">(optional)</span></label>
+        <textarea id="aj-notes" rows="2"></textarea>
+        <p class="err" id="aj-err" hidden></p>
+        <div class="row"><button type="submit" class="pl-btn pl-btn--solid" id="aj-go">Add</button></div>
+      </form>`;
+    document.getElementById('aj-title').focus();
+    document.getElementById('add-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const go = document.getElementById('aj-go'), err = document.getElementById('aj-err');
+      go.disabled = true; go.textContent = 'Adding…'; err.hidden = true;
+      const v = id => document.getElementById(id).value.trim();
+      try {
+        const r = await fetch('/api/pipeline/add', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: v('aj-title'), company: v('aj-company'), url: v('aj-url'), status: v('aj-status'), notes: v('aj-notes') || null, posting_text: v('aj-posting') || null }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || `Error ${r.status}`);
+        mine.set(d.id, Date.now()); pulseUntil.set(d.id, Date.now() + 8000);
+        mode = null; await load(); select(d.id);
+      } catch (x) { err.textContent = x.message; err.hidden = false; go.disabled = false; go.textContent = 'Add'; }
     });
-    a.click();
-    URL.revokeObjectURL(a.href);
+  });
+
+  // ── Find ──────────────────────────────────────────────────────────────────
+  function applyFind() {
+    const q = document.getElementById('find').value.toLowerCase().trim();
+    const hit = a => !q || a.title.toLowerCase().includes(q) || a.company.toLowerCase().includes(q);
+    if (nodesSel) nodesSel.classed('is-dim', d => !hit(d.a));
+    document.querySelectorAll('.pl-table tr[data-id]').forEach(tr => tr.classList.toggle('is-dim', !hit(byId[tr.dataset.id])));
   }
+  document.getElementById('find').addEventListener('input', applyFind);
 
-  function csvCell(v) { const s = (v == null ? '' : String(v)).replace(/"/g, '""'); return `"${s}"`; }
-
-  function escH(s) {
-    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  // ── List view ─────────────────────────────────────────────────────────────
+  function renderList() {
+    const groups = [...STAGES, DECLINED].map(s => ({ s, rows: items.filter(a => stageOf(a) === s.key).sort((a, b) => daysIn(a) - daysIn(b)) }));
+    document.getElementById('list').innerHTML = groups.filter(g => g.rows.length).map(({ s, rows }) => `
+      <h3><i style="background:${s.color}"></i>${s.label} · ${rows.length}</h3>
+      <table class="pl-table"><colgroup><col class="c-t"><col class="c-c"><col class="c-a"><col class="c-p"><col class="c-s"></colgroup><tbody>
+      ${rows.map(a => `<tr data-id="${a.id}">
+        <td><span class="t">${esc(a.title)}</span></td><td>${esc(a.company)}</td>
+        <td class="age${isQuiet(a) ? ' is-quiet' : ''}">${span(daysIn(a))}</td>
+        <td class="prep">${PREP_STAGES.has(stageOf(a)) ? `${a.prep}/${a.prep_steps}` : ''}</td>
+        <td><select data-move="${a.id}" aria-label="Stage">${[...STAGES, DECLINED].map(o => `<option value="${o.key}"${o.key === stageOf(a) ? ' selected' : ''}>${o.label}</option>`).join('')}</select></td>
+      </tr>`).join('')}</tbody></table>`).join('') || '<p class="pl-empty" style="position:static">No applications yet.</p>';
   }
+  document.getElementById('list').addEventListener('change', e => { const s = e.target.closest('[data-move]'); if (s) move(Number(s.dataset.move), s.value); });
+  document.getElementById('list').addEventListener('click', e => {
+    if (e.target.closest('select')) return;
+    const tr = e.target.closest('tr[data-id]'); if (tr) select(Number(tr.dataset.id));
+  });
 
-  document.addEventListener('DOMContentLoaded', loadPipeline);
+  document.querySelectorAll('.bar3-views .bar3-item').forEach(b => b.addEventListener('click', () => {
+    view = b.dataset.view;
+    document.querySelectorAll('.bar3-views .bar3-item').forEach(x => { x.classList.toggle('is-on', x === b); x.setAttribute('aria-selected', String(x === b)); });
+    document.getElementById('field').hidden = view !== 'field';
+    document.getElementById('list').hidden = view !== 'list';
+    hideTip(); render();
+  }));
+
+  // ── Export ────────────────────────────────────────────────────────────────
+  document.getElementById('export').addEventListener('click', () => {
+    if (!items.length) { toast('Nothing to export yet.'); return; }
+    const cell = v => `"${(v == null ? '' : String(v)).replace(/"/g, '""')}"`;
+    const lines = [['Title', 'Company', 'Stage', 'In stage (days)', 'Saved', 'Applied', 'Preparation', 'Notes', 'URL'].join(',')]
+      .concat(items.map(a => [cell(a.title), cell(a.company), cell(STAGE[stageOf(a)].label), Math.floor(daysIn(a)), cell(fmtDate(a.saved_date)),
+        cell(a.applied_date ? fmtDate(a.applied_date) : ''), `${a.prep}/${a.prep_steps}`, cell(a.notes), cell(a.url)].join(',')));
+    const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })), download: 'pipeline.csv' });
+    link.click(); URL.revokeObjectURL(link.href);
+  });
+
+  let resizeT;
+  window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (view === 'field') draw(); }, 150); });
+  // Pulses fade on their own; redraw once a minute so ages and quiet states stay true.
+  setInterval(() => { if (view === 'field' && !document.hidden) draw(); }, 60000);
+  load();
 </script>
 {% endblock %}

@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import requests as http_requests
 from database import get_db, SessionLocal
 from models import Company, Discovery, Job, KeywordProfile
+from profile_terms import facet_terms
 from scraper import JobScraper
 from discover import board_jobs, boards_on_page, company_key
 from api.discovery import run_many
@@ -111,7 +112,7 @@ def _compute_p_scores(db: Session) -> dict:
     matching the same OR logic used by the search page.
     """
     profiles = db.query(KeywordProfile).all()
-    keywords = list({kw.lower() for p in profiles for kw in p.get_keywords()})
+    keywords = list({kw.lower() for kw in facet_terms(db, "want")})
     if not keywords:
         return {}
 
@@ -166,7 +167,7 @@ def company_field(db: Session = Depends(get_db)):
     now = datetime.utcnow()
     week, fresh = now - timedelta(days=7), now - timedelta(days=3)
     profiles = db.query(KeywordProfile).all()
-    keywords = list({kw.lower() for p in profiles for kw in p.get_keywords()})
+    keywords = list({kw.lower() for kw in facet_terms(db, "want")})
 
     open_jobs: Dict[int, int] = {}
     matched: Dict[int, int] = {}

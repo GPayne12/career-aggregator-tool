@@ -7,6 +7,7 @@ from database import SessionLocal
 from models import Company, Job, KeywordProfile, Setting
 from scraper import JobScraper
 from synonyms import expand_keywords
+from profile_terms import facet_terms
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,7 @@ def iter_scrape() -> Generator[dict, None, None]:
     try:
         exclude_terms = _get_exclude_terms(db)
 
-        raw_keywords = [kw for p in db.query(KeywordProfile).all() for kw in p.get_keywords()]
+        raw_keywords = facet_terms(db, "want")
         keywords_lower = [kw.lower() for kw in expand_keywords(raw_keywords)] if raw_keywords else []
 
         # Only career pages George has verified are scraped; the rest wait in
@@ -194,6 +195,11 @@ def iter_scrape() -> Generator[dict, None, None]:
         ).all()
         for job in pruned_jobs:
             job.is_active = False
+        stamp = db.query(Setting).filter(Setting.key == "last_survey").first()
+        if stamp:
+            stamp.value = datetime.utcnow().isoformat()
+        else:
+            db.add(Setting(key="last_survey", value=datetime.utcnow().isoformat()))
         db.commit()
 
         yield {"type": "done", "total_added": total_added, "closed": closed_total, "held": held,

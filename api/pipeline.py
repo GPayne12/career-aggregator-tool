@@ -1,4 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from pydantic import BaseModel
@@ -31,6 +32,8 @@ class PipelineJobResponse(BaseModel):
     notes: Optional[str]
     posting_text: Optional[str] = None
     posting_state: Optional[str] = None
+    company_id: Optional[int] = None
+    stage_changed_date: Optional[str] = None
     # Progress on the application, for list views (the work itself is on the item).
     has_suggestions: bool = False
     has_letter: bool = False
@@ -104,6 +107,8 @@ def get_pipeline_job_response(pipeline_job: PipelineJob, db: Session) -> Pipelin
         notes=pipeline_job.notes,
         posting_text=pipeline_job.posting_text,
         posting_state=pipeline_job.posting_state,
+        company_id=pipeline_job.company_id,
+        stage_changed_date=pipeline_job.stage_changed_date.isoformat() if pipeline_job.stage_changed_date else None,
         **_progress(pipeline_job),
     )
 
@@ -290,6 +295,48 @@ def get_pipeline(db: Session = Depends(get_db)):
     return PipelineResponse(**result)
 
 
+# ── The field: every application as a dot ─────────────────────────────────────
+PREP_STEPS = 5   # posting, suggestions, resume updated, letter, letter exported (Render's checklist)
+
+
+def _version(db: Session) -> str:
+    n, top, changed = db.query(func.count(PipelineJob.id), func.max(PipelineJob.id),
+                               func.max(PipelineJob.stage_changed_date)).one()
+    return f"{n}-{top}-{changed.isoformat() if changed else ''}"
+
+
+@router.get("/version")
+def pipeline_version(db: Session = Depends(get_db)):
+    """Cheap to poll: changes when an application is added, removed or moves stage."""
+    return {"version": _version(db)}
+
+
+@router.get("/field")
+def pipeline_field(db: Session = Depends(get_db)):
+    """Every application, light (no posting text or work), with its company's interest."""
+    companies = {c.id: c for c in db.query(Company).all()}
+    items = []
+    for pj in db.query(PipelineJob).all():
+        c = companies.get(pj.company_id)
+        p = _progress(pj)
+        check = p["checklist"] or {}
+        prep = sum([bool(pj.posting_text), p["has_suggestions"], bool(check.get("resumeUpdated")),
+                    p["has_letter"], bool(check.get("exported"))])
+        items.append({
+            "id": pj.id, "company_id": pj.company_id, "company": c.name if c else "Unknown",
+            "interest": ((c.score_a or 0) + (c.score_m or 0) + (c.score_p or 0)) if c else 0,
+            "title": pj.title, "location": pj.location, "salary": pj.salary_range, "url": pj.url,
+            "status": pj.status, "notes": pj.notes, "posting_state": pj.posting_state,
+            "saved_date": pj.saved_date.isoformat() if pj.saved_date else None,
+            "applied_date": pj.applied_date.isoformat() if pj.applied_date else None,
+            "stage_changed_date": pj.stage_changed_date.isoformat() if pj.stage_changed_date else None,
+            "prep": prep, "prep_steps": PREP_STEPS,
+            "has_suggestions": p["has_suggestions"], "has_letter": p["has_letter"],
+            "has_posting": bool(pj.posting_text), "checklist": check,
+        })
+    return {"version": _version(db), "items": items}
+
+
 @router.get("/{status}", response_model=List[PipelineJobResponse])
 def get_pipeline_by_status(status: str, db: Session = Depends(get_db)):
     """Get pipeline jobs by status"""
@@ -318,12 +365,18 @@ def update_pipeline_job(
     if request.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status: {request.status}")
 
+    moved = pipeline_job.status != request.status
     pipeline_job.status = request.status
     if request.notes is not None:
         pipeline_job.notes = request.notes
-    if request.status == "applied":
+    # Keep the first application date if a job is moved back and forth.
+    if request.status == "applied" and not pipeline_job.applied_date:
         pipeline_job.applied_date = datetime.utcnow()
-    pipeline_job.stage_changed_date = datetime.utcnow()
+    # Moved back before applying (an undo, or a mistake): it wasn't sent.
+    if request.status in ("saved", "preparing", "ready"):
+        pipeline_job.applied_date = None
+    if moved:
+        pipeline_job.stage_changed_date = datetime.utcnow()
 
     db.commit()
     db.refresh(pipeline_job)
