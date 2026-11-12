@@ -8,7 +8,7 @@
       the strip along the foot declined
       height in a lane        how long since it last moved: fresh at the top, sinking with age
       colour                  the stage group, matching the Overview's bands
-      size                    the company's interest, 0 to 9 (A + M + P)
+      size                    the company's interest, 0 to 9 (motivation + advocacy + postings)
       thin arc                preparation done, of Render's five steps (saved → ready only)
       hollow                  gone quiet: longer in this stage than it should be
       tangerine pulse         moved in the last day, or just now
@@ -145,6 +145,8 @@
   .checks li.done { color:var(--ink); }
   .checks li span { font:12px var(--mono); width:14px; color:var(--ink3); }
   .checks li.done span { color:var(--ok); }
+  .checks li.skipped { color:var(--ink3); }
+  .checks li.skipped i { font:12px var(--mono); font-style:normal; margin-left:6px; }
   .pl-panel textarea, .pl-panel input[type=text], .pl-panel input[type=url], .pl-panel select { width:100%; box-sizing:border-box; margin:0 !important; }
   .pl-panel textarea { min-height:80px; resize:vertical; }
   .pl-form { display:flex; flex-direction:column; gap:8px; }
@@ -501,9 +503,12 @@
         <dt>interest</dt><dd>${a.interest} of 9 <span class="muted">· the company's, set on the Overview</span></dd>
       </dl>
 
-      <h3>Preparation · ${a.prep} of ${a.prep_steps}</h3>
+      ${PREP_STAGES.has(s)
+        ? `<h3>Preparation · ${a.prep} of ${a.prep_steps}</h3>
       <ul class="checks">${stepsOf(a).map(([n, ok]) => `<li class="${ok ? 'done' : ''}"><span>${ok ? '✓' : '○'}</span>${STEP_NAME[n]}</li>`).join('')}</ul>
-      ${embedded ? `<div class="row"><button type="button" class="pl-btn pl-btn--solid" data-act="prepare" title="Signaling and a cover letter, in Render">Prepare in Render →</button></div>` : ''}
+      ${embedded ? `<div class="row"><button type="button" class="pl-btn pl-btn--solid" data-act="prepare" title="The resume and a cover letter, in Render">Prepare in Render →</button></div>` : ''}`
+        : `<h3>Preparation · closed</h3>
+      <ul class="checks">${stepsOf(a).map(([n, ok]) => `<li class="${ok ? 'done' : 'skipped'}"><span>${ok ? '✓' : '–'}</span>${STEP_NAME[n]}${ok ? '' : ' <i>not done</i>'}</li>`).join('')}</ul>`}
 
       <h3>Notes</h3>
       <textarea id="notes" placeholder="Who you spoke to, what's next…">${esc(a.notes || '')}</textarea>

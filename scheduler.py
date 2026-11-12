@@ -7,7 +7,7 @@ from database import SessionLocal
 from models import Company, Job, KeywordProfile, Setting
 from scraper import JobScraper
 from synonyms import expand_keywords
-from profile_terms import facet_terms
+from profile_terms import facet_terms, has_term
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,7 @@ PER_COMPANY_CAP = 25
 
 
 def _matches_keywords(title: str, keywords_lower: List[str]) -> bool:
-    t = title.lower()
-    return any(kw in t for kw in keywords_lower)
+    return any(has_term(title, kw) for kw in keywords_lower)
 
 
 def _get_exclude_terms(db: Session) -> list:
@@ -40,8 +39,7 @@ def _save_jobs(db: Session, scraper: JobScraper, company: Company,
     # Step 1: exclude terms + date filter, parse posted_date once
     candidates: List[tuple] = []
     for job_data in scraped_jobs:
-        title_lower = job_data.get('title', '').lower()
-        if exclude_lower and any(t in title_lower for t in exclude_lower):
+        if exclude_lower and any(has_term(job_data.get('title', ''), t) for t in exclude_lower):
             continue
         posted_date = scraper.process_posted_date(job_data.get('posted_date'))
         if posted_date and posted_date < cutoff:

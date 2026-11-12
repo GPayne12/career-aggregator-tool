@@ -58,6 +58,8 @@ class KeywordProfile(Base):
     # in posting titles) or "can" (skills, matched in posting text).
     side = Column(String(10), nullable=True)
     position = Column(Integer, nullable=True)
+    # For want facets: "engineering" or "learning". Survey shows the two tracks 1:1.
+    track = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -82,6 +84,7 @@ class KeywordProfile(Base):
             "name": self.name,
             "keywords": self.get_keywords(),
             "side": self.facet_side,
+            "track": self.track,
             "position": self.position,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

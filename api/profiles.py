@@ -10,6 +10,7 @@ from database import get_db
 from datetime import datetime, timedelta
 from sqlalchemy import and_, or_
 from models import KeywordProfile, Job
+from profile_terms import has_term
 from synonyms import SYNONYMS
 
 router = APIRouter(prefix="/api/profiles", tags=["profiles"])
@@ -27,6 +28,7 @@ class KeywordProfileUpdate(BaseModel):
     name: Optional[str] = None
     keywords: Optional[List[str]] = None
     side: Optional[str] = None
+    track: Optional[str] = None   # "engineering", "learning", or "" for none
 
 
 class KeywordProfileResponse(BaseModel):
@@ -34,6 +36,7 @@ class KeywordProfileResponse(BaseModel):
     name: str
     keywords: List[str]
     side: str = "want"
+    track: Optional[str] = None
 
 
 def _side(value: Optional[str]) -> str:
@@ -43,7 +46,7 @@ def _side(value: Optional[str]) -> str:
 
 
 def _out(p: KeywordProfile) -> KeywordProfileResponse:
-    return KeywordProfileResponse(id=p.id, name=p.name, keywords=p.get_keywords(), side=p.facet_side)
+    return KeywordProfileResponse(id=p.id, name=p.name, keywords=p.get_keywords(), side=p.facet_side, track=p.track)
 
 
 def _parse_resume_pdf(path: str) -> dict:
@@ -116,9 +119,9 @@ def profile_summary(db: Session = Depends(get_db)):
     for p in db.query(KeywordProfile).order_by(KeywordProfile.position, KeywordProfile.id).all():
         kws = [k.lower() for k in p.get_keywords()]
         if p.facet_side == "want":
-            n = sum(1 for t, _ in jobs if any(k in t for k in kws))
+            n = sum(1 for t, _ in jobs if any(has_term(t, k) for k in kws))
         else:
-            n = sum(1 for t, d in jobs if any(re.search(r"\b" + re.escape(k) + r"\b", t + " " + d) for k in kws))
+            n = sum(1 for t, d in jobs if any(has_term(t + " " + d, k) for k in kws))
         facets.append({**_out(p).dict(), "open": n})
     return {"facets": facets, "open_postings": len(jobs)}
 
@@ -195,6 +198,10 @@ def update_profile(profile_id: int, profile: KeywordProfileUpdate, db: Session =
         db_profile.set_keywords(profile.keywords)
     if profile.side is not None:
         db_profile.side = _side(profile.side)
+    if profile.track is not None:
+        if profile.track not in ("engineering", "learning", ""):
+            raise HTTPException(status_code=400, detail="track must be 'engineering', 'learning' or ''")
+        db_profile.track = profile.track or None
 
     db.commit()
     db.refresh(db_profile)

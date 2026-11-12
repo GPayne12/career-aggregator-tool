@@ -196,7 +196,8 @@ class JobScraper:
         tenant = parsed.hostname.split('.')[0]
 
         # Board name is the first path segment; discover it via redirect if absent
-        path_parts = [p for p in parsed.path.strip('/').split('/') if p]
+        # A language segment ("/en-US/External_Careers") isn't the board's name.
+        path_parts = [p for p in parsed.path.strip('/').split('/') if p and not re.fullmatch(r'[a-z]{2}(-[A-Za-z]{2})?', p)]
         if path_parts:
             board = path_parts[0]
         else:

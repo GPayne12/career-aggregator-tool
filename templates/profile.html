@@ -74,6 +74,7 @@
   .pf-name:hover { background:rgba(45,106,79,.06); outline:1px dashed rgba(45,106,79,.45); outline-offset:2px; }
   .pf-open { font:12px var(--mono); color:var(--ink3); white-space:nowrap; }
   .pf-open b { color:var(--ink); }
+  html body .pf-track { padding:2px 8px; border:1px solid var(--line); border-radius:999px; color:var(--ink2) !important; }
   .pf-acts { margin-left:auto; display:flex; gap:2px; opacity:.35; transition:opacity .15s; }
   .pf-facet:hover .pf-acts, .pf-facet:focus-within .pf-acts { opacity:1; }
 
@@ -120,6 +121,7 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const embedded = document.body.classList.contains('embedded');
+  const TRACK_NAME = { learning: 'Learning design', engineering: 'Engineering' };
   let facets = [], openPostings = 0, excluded = [];
 
   async function api(path, opts = {}) {
@@ -153,6 +155,7 @@
       <div class="pf-facet-head">
         <span class="pf-name" data-act="rename" tabindex="0" title="Click to rename">${esc(f.name)}</span>
         <span class="pf-open" title="Open postings from the last week this facet matches"><b>${f.open}</b> open</span>
+        ${f.side === 'want' ? `<button type="button" class="pf-btn pf-btn--quiet pf-track" data-act="track" title="Survey alternates the two tracks; click to switch">${TRACK_NAME[f.track] || 'No track'}</button>` : ''}
         <span class="pf-acts">
           <button type="button" class="pf-btn pf-btn--quiet" data-act="flip" title="Move to ${other === 'can' ? 'What you can do' : 'What you want'}">${other === 'can' ? 'Move to can →' : '← Move to want'}</button>
           <button type="button" class="pf-btn pf-btn--quiet pf-btn--danger" data-act="remove">Remove</button>
@@ -231,6 +234,7 @@
     if (act === 'rename') return startRename(t);
     if (act === 'drop' && f) return save(f, { keywords: f.keywords.filter((_, i) => i !== Number(t.dataset.i)) });
     if (act === 'flip' && f) return save(f, { side: f.side === 'want' ? 'can' : 'want' });
+    if (act === 'track' && f) return save(f, { track: { learning: 'engineering', engineering: '' }[f.track] ?? 'learning' });
     if (act === 'remove' && f) {
       t.parentElement.innerHTML = `<button type="button" class="pf-btn pf-btn--quiet pf-btn--danger" data-act="remove-yes">Remove ${esc(f.name)}?</button><button type="button" class="pf-btn pf-btn--quiet" data-act="remove-no">Keep</button>`;
       return;

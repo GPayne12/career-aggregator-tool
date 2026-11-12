@@ -124,7 +124,8 @@ def _progress(pj: PipelineJob) -> dict:
         checklist = None
     return {
         # Render stores {jobDesc, result: {suggestions: [...]}} per job.
-        "has_suggestions": bool(((work.get("suggestions") or {}).get("result") or {}).get("suggestions")),
+        # Signaling has read this posting (even when nothing was left to suggest).
+        "has_suggestions": bool((work.get("suggestions") or {}).get("result")),
         "has_letter": bool((work.get("draft") or {}).get("doc")),
         "checklist": checklist,
     }

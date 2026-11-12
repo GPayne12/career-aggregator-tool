@@ -4,7 +4,7 @@
 
 {#- Overview: every company as a dot, drawn by how far along it is with you.
       position (band, outside in)  closed · watching · preparing · applied · talking
-      size                         your interest: advocacy + motivation + matching postings (0–9)
+      size                         your interest: motivation + advocacy + postings (0–3 each, 0–9)
       filled / hollow              Pathways surveys its verified career page / not yet verified
       tangerine pulse              something new this week: a stage change, or fresh matching postings
     Click a dot for the company: turn its interest up (the dot grows), see its
@@ -248,7 +248,7 @@
     if (live.length) return STAGE_BAND[live.map(a => a.status).sort((a, b) => STAGE_ORDER.indexOf(a) - STAGE_ORDER.indexOf(b))[0]] || 'preparing';
     return c.applications.length ? 'closed' : 'watching';
   }
-  const interestOf = c => (c.score_a || 0) + (c.score_m || 0) + (c.score_p || 0);       // 0–9
+  const interestOf = c => (c.score_m || 0) + (c.score_a || 0) + (c.score_p || 0);       // motivation + advocacy + postings, 0–9
   // A live application never draws smaller than a company you're only watching.
   const radiusOf = c => Math.max(['talking', 'applied', 'preparing'].includes(c.band) ? 7 : 0, 5 + interestOf(c) * 2.3);
   const isFresh = c => c.fresh_matched > 0 || c.applications.some(a => a.changed && Date.now() - new Date(a.changed + 'Z') < WEEK);
@@ -370,8 +370,8 @@
     const live = c.applications.filter(a => a.status !== 'rejected');
     tip.innerHTML = `<b>${esc(c.name)}</b>
       <span class="k">${BAND[c.band].label}</span> · ${esc(BAND[c.band].hint)}<br>
-      <span class="k">interest</span> ${interestOf(c)} of 9 <span class="k">(A ${c.score_a ?? '–'} · M ${c.score_m ?? '–'} · P ${c.score_p})</span><br>
-      <span class="k">postings</span> ${c.open_jobs} open${c.matched_jobs ? `, ${c.matched_jobs} match your profiles` : ''}<br>
+      <span class="k">interest</span> ${interestOf(c)} of 9 <span class="k">· motivation ${c.score_m ?? '–'} · advocacy ${c.score_a ?? '–'} · postings ${c.score_p}</span><br>
+      <span class="k">this week</span> ${c.open_jobs} open postings${c.matched_jobs ? `, ${c.matched_jobs} match your profile` : ''}<br>
       ${live.length ? live.slice(0, 3).map(a => `<span class="k">${STAGE_LABEL[a.status]}</span> ${esc(a.title)}`).join('<br>') + '<br>' : ''}
       <span class="k">career page</span> ${watched(c) ? 'verified, surveyed' : 'not verified yet'}`;
     tip.hidden = false;
@@ -412,14 +412,14 @@
       <h3>YOUR INTEREST · ${interestOf(c)} OF 9</h3>
       <div class="dial"><span class="dial-name">Motivation</span>${pips(c, 'score_m')}</div>
       <div class="dial"><span class="dial-name">Advocacy</span>${pips(c, 'score_a')}</div>
-      <div class="dial"><span class="dial-name">Postings</span><span class="dial-val">${c.score_p} of 3 · ${c.matched_jobs} matching your profiles${c.fresh_matched ? `, ${c.fresh_matched} new` : ''}</span></div>
-      <p class="muted">Motivation is how much you want to work there; advocacy, who you know inside. Postings count by themselves.</p>
+      <div class="dial"><span class="dial-name">Postings</span><span class="dial-val">${c.score_p} of 3 · ${c.matched_jobs} matching your profile${c.fresh_matched ? `, ${c.fresh_matched} new` : ''}</span></div>
+      <p class="muted">Motivation: how much you want to work there. Advocacy: who you know inside. Postings: open postings matching your profile, counted by Pathways.</p>
 
       <h3>APPLICATIONS</h3>
       ${apps.length ? `<ul>${apps.map(a => `<li><div class="app-row">
           <span><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a><br><span class="stage">${STAGE_LABEL[a.status] || a.status}${a.applied_date ? ` · applied ${a.applied_date.slice(0, 10)}` : ''}</span></span>
-          ${a.status !== 'rejected' && embedded ? `<button type="button" class="prep" data-prepare="${a.id}">Prepare in Render →</button>` : ''}
-        </div></li>`).join('')}</ul>` : `<p class="muted">None yet. <a href="/search">Find a posting →</a></p>`}
+          ${['saved', 'preparing', 'ready'].includes(a.status) && embedded ? `<button type="button" class="prep" data-prepare="${a.id}">Prepare in Render →</button>` : ''}
+        </div></li>`).join('')}</ul>` : `<p class="muted">None yet. <a href="/survey">Find a posting →</a></p>`}
 
       <h3>CAREER PAGE</h3>
       <p>${c.career_url ? `<a href="${esc(c.career_url)}" target="_blank" rel="noopener">${esc(host(c.career_url))} ↗</a> · ` : ''}<span class="muted">${watched(c) ? 'verified; Pathways surveys it' : c.career_url ? 'waiting for you to verify it' : 'none yet'}</span></p>

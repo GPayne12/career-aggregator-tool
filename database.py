@@ -38,6 +38,7 @@ def init_db():
             "ALTER TABLE keyword_profiles ADD COLUMN side VARCHAR(10)",
             "ALTER TABLE keyword_profiles ADD COLUMN position INTEGER",
             "UPDATE keyword_profiles SET side = 'want' WHERE side IS NULL",
+            "ALTER TABLE keyword_profiles ADD COLUMN track VARCHAR(20)",
             # Scraping now waits for George to verify each career page. Pages
             # that already produced jobs have proved themselves and keep running;
             # other typed-in pages wait. Both only touch rows not yet labelled.

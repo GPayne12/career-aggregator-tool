@@ -149,9 +149,9 @@
   };
   const statusOf = c => (c.url_status && STATUS[c.url_status]) ? c.url_status : 'unknown';
   const FILTERS = [
-    ['review', 'To review', c => !c.is_skipped && ['found', 'page', 'unverified'].includes(statusOf(c))],
+    // No "Nothing found" category: a company without a career page waits in To review.
+    ['review', 'To review', c => !c.is_skipped && statusOf(c) !== 'verified'],
     ['verified', 'Verified', c => !c.is_skipped && statusOf(c) === 'verified'],
-    ['missing', 'Nothing found', c => !c.is_skipped && ['website', 'none', 'unknown'].includes(statusOf(c))],
     ['skipped', 'Skipped', c => c.is_skipped],
     ['all', 'All', () => true],
   ];
@@ -194,12 +194,12 @@
 
   function renderSummary() {
     const active = companiesList.filter(c => !c.is_skipped);
-    const n = s => active.filter(c => s.includes(statusOf(c))).length;
-    const v = n(['verified']), r = n(['found', 'page', 'unverified']), m = n(['website', 'none', 'unknown']);
+    const v = active.filter(c => statusOf(c) === 'verified').length;
     document.getElementById('co-summary').innerHTML =
-      `${active.length} companies · <b>${v}</b> verified and surveyed · <b>${r}</b> to review · ${m} with no career page yet` +
+      `${active.length} companies · <b>${v}</b> verified and surveyed · <b>${active.length - v}</b> to review` +
       (companiesList.length - active.length ? ` · and ${companiesList.length - active.length} skipped` : '');
   }
+
 
   function renderFilters() {
     const el = document.getElementById('co-filters');
@@ -235,9 +235,9 @@
             <th class="sortable" onclick="sortBy('website')">Website <span class="sort-ind">${sortInd('website')}</span></th>
             <th class="sortable" onclick="sortBy('career_url')">Career page <span class="sort-ind">${sortInd('career_url')}</span></th>
             <th class="sortable" onclick="sortBy('status')">Status <span class="sort-ind">${sortInd('status')}</span></th>
-            <th class="col-score sortable" onclick="sortBy('score_m')" title="Motivation: personal interest (0–3)">M</th>
-            <th class="col-score sortable" onclick="sortBy('score_a')" title="Advocacy: internal connections (0–3)">A</th>
-            <th class="col-score sortable" onclick="sortBy('score_p')" title="Postings: keyword-matched listings (0–3)">P*</th>
+            <th class="col-score sortable" onclick="sortBy('score_m')" title="Motivation: how much you want to work there (0–3, yours to set)">M</th>
+            <th class="col-score sortable" onclick="sortBy('score_a')" title="Advocacy: who you know inside (0–3, yours to set)">A</th>
+            <th class="col-score sortable" onclick="sortBy('score_p')" title="Postings: open postings matching your profile (0–3, counted by Pathways)">P</th>
             <th></th>
           </tr></thead>
           <tbody>${rows.map(rowHtml).join('')}</tbody>
@@ -284,7 +284,7 @@
         <td><div data-edit="career_url" data-id="${c.id}">${careerCell(c)}</div>${suggestionHtml(c)}</td>
         <td><span class="co-status st-${st}" title="${escH(STATUS[st].hint)}">${STATUS[st].label}</span></td>
         ${score('score_m', c.score_m)}${score('score_a', c.score_a)}
-        <td class="col-score" title="Computed from active listings">${c.score_p ?? '<span class="text-muted">—</span>'}</td>
+        <td class="col-score" title="Postings: counted by Pathways from open postings matching your profile">${c.score_p ?? '<span class="text-muted">—</span>'}</td>
         <td><div class="co-actions">
           ${c.career_url ? `<button type="button" class="co-btn" data-act="check" data-id="${c.id}" title="A trial survey: see what Pathways would collect">Check</button>` : ''}
           ${c.career_url && !verified ? `<button type="button" class="co-btn co-btn--go" data-act="verify" data-id="${c.id}" title="Confirm this career page; Pathways surveys it from now on">Verify</button>` : ''}

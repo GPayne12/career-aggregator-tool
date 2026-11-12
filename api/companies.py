@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import requests as http_requests
 from database import get_db, SessionLocal
 from models import Company, Discovery, Job, KeywordProfile
-from profile_terms import facet_terms
+from profile_terms import facet_terms, has_term
 from scraper import JobScraper
 from discover import board_jobs, boards_on_page, company_key
 from api.discovery import run_many
@@ -125,7 +125,7 @@ def _compute_p_scores(db: Session) -> dict:
     counts: dict = {}
     for company_id, title in active_jobs:
         title_lower = title.lower()
-        if any(kw in title_lower for kw in keywords):
+        if any(has_term(title_lower, kw) for kw in keywords):
             counts[company_id] = counts.get(company_id, 0) + 1
 
     return {cid: min(3, n) for cid, n in counts.items()}
@@ -161,7 +161,7 @@ def list_companies(db: Session = Depends(get_db)):
 @router.get("/field")
 def company_field(db: Session = Depends(get_db)):
     """Everything the Overview's company field draws, in one call: each active
-    company with its interest (A, M, P), its open and keyword-matched postings,
+    company with its interest (motivation, advocacy, postings), its open and profile-matched postings,
     and its applications. The page decides the band and size from these."""
     from models import PipelineJob
     now = datetime.utcnow()
@@ -175,7 +175,7 @@ def company_field(db: Session = Depends(get_db)):
     for cid, title, fetched in db.query(Job.company_id, Job.title, Job.fetched_at).filter(
             Job.is_active == True, Job.fetched_at >= week).all():
         open_jobs[cid] = open_jobs.get(cid, 0) + 1
-        if keywords and any(k in title.lower() for k in keywords):
+        if keywords and any(has_term(title, k) for k in keywords):
             matched[cid] = matched.get(cid, 0) + 1
             if fetched and fetched >= fresh:
                 fresh_matched[cid] = fresh_matched.get(cid, 0) + 1

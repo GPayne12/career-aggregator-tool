@@ -12,6 +12,7 @@
 <nav class="bar3" aria-label="Survey">
   <button type="button" class="bar3-go" id="sv-run" title="Read every verified career page for new postings">Survey now</button>
   <span class="bar3-note" id="sv-last"></span>
+  <span class="bar3-note" id="sv-tracks" title="Postings matching each track; the list alternates them"></span>
   <span class="bar3-spacer"></span>
   <div class="bar3-tabs" role="tablist" aria-label="Where" id="sv-where">
     <button type="button" class="bar3-item is-on" data-value="" role="tab" aria-selected="true">All</button>
@@ -170,6 +171,7 @@
   /* Row actions */
   html body .sv-go { all:unset; cursor:pointer; font:600 12px var(--mono) !important; color:var(--ok) !important; padding:4px 8px; border-radius:6px; margin:-1px 0 0 -8px; white-space:nowrap; }
   html body .sv-go:hover { background:var(--surface); }
+  .sv-done { font:600 12px var(--mono); color:#1f8a5a; white-space:nowrap; }
   .sv-acts { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
   .sv-table tr.is-open > td { background:rgba(45,106,79,.06) !important; }
   .sv-table col.c-act { width:9%; }
@@ -390,7 +392,8 @@
 
   // ── Postings ─────────────────────────────────────────────────────────
   async function loadJobs() {
-    const p = new URLSearchParams({ per_company_limit: '25' });
+    // Each company's best 10, so no one employer floods the list.
+    const p = new URLSearchParams({ per_company_limit: '10' });
     if (state.profiles.size) p.set('profile_ids', [...state.profiles].join(','));
     if (state.where) p.set('location_type', state.where);
     loaded = false;
@@ -428,14 +431,22 @@
 
   function render() {
     if (!loaded) return;
-    const rows = visible();
+    let rows = visible();
+    // Ranked by the profile: the two tracks alternate, Learning design first.
+    const L = rows.filter(j => j.track === 'learning'), E = rows.filter(j => j.track === 'engineering');
+    $('sv-tracks').textContent = state.profiles.size && (L.length || E.length) ? `Learning design ${L.length} · Engineering ${E.length}` : '';
+    if (state.profiles.size && !state.sort.col) {
+      const mixed = [];
+      for (let i = 0; i < Math.max(L.length, E.length); i++) { if (L[i]) mixed.push(L[i]); if (E[i]) mixed.push(E[i]); }
+      rows = [...mixed, ...rows.filter(j => !j.track)];
+    }
     if (state.sort.col) {
       const f = SORT[state.sort.col], d = state.sort.dir;
       rows.sort((a, b) => { const x = f(a), y = f(b); return x < y ? -d : x > y ? d : 0; });
     }
     const ranked = state.profiles.size > 0;
     const shown = rows.length < jobs.length ? `${rows.length} of ${jobs.length} postings` : plural(jobs.length, 'posting', 'postings');
-    $('sv-count').textContent = shown + (ranked && !state.sort.col ? ' · best match first' : '');
+    $('sv-count').textContent = shown + (ranked && !state.sort.col ? ' · best first, the two tracks alternating' : '');
     if (!rows.length) {
       $('sv-list').innerHTML = `<p class="sv-empty">${jobs.length ? 'Nothing matches. Loosen the filters above.' : 'No open postings from the last week. Survey now to read the verified career pages.'}</p>`;
       return;
@@ -450,7 +461,8 @@
 
   function row(j, ranked) {
     const age = !j.posted_date ? '—' : j.days_old > 0 ? `${j.days_old}d ago` : 'today';
-    const kw = ranked && j.matched_keywords.length ? `<span class="sv-kw">${j.matched_keywords.map(escH).join(' · ')}</span>` : '';
+    const trackName = { learning: 'Learning design', engineering: 'Engineering' }[j.track];
+    const kw = ranked && (trackName || j.matched_keywords.length) ? `<span class="sv-kw">${[trackName, ...j.matched_keywords.map(escH)].filter(Boolean).join(' · ')}</span>` : '';
     const match = ranked ? `<td class="sv-match c-hide"><i style="width:${Math.round(j.relevance_score * .4)}px"></i>${j.relevance_score}%</td>` : '';
     return `<tr data-row="${j.job_id}"${openId === j.job_id ? ' class="is-open"' : ''}>
       <td><a class="sv-title" href="${escH(j.url)}" data-preview="${j.job_id}" title="Read it here (⌘-click opens the posting)">${escH(j.title)}</a>${kw}</td>
@@ -458,10 +470,7 @@
       <td class="sv-loc c-hide" title="${escH(j.location || '')}">${escH(j.location || '—')}</td>
       ${match}
       <td class="sv-age">${age}</td>
-      <td><div class="sv-acts">
-        <button type="button" class="sv-go" data-pursue="${j.job_id}" title="${PURSUE_TIP}">${PURSUE_LABEL}</button>
-        <button type="button" class="sv-save" data-id="${j.job_id}" ${j.is_saved ? 'disabled' : ''} title="Keep it in the pipeline for later">${j.is_saved ? 'Saved' : 'Save'}</button>
-      </div></td>
+      <td><div class="sv-acts">${actsFor(j)}</div></td>
     </tr>`;
   }
 
@@ -501,6 +510,21 @@
     a.click(); URL.revokeObjectURL(a.href);
   });
 
+  // ── Where a posting stands in the pipeline ───────────────────────────
+  // Once applied (or further), a posting is done here: no Pursue, no Save.
+  const DONE = { applied: 'Applied', interviewing: 'Interviewing', offer: 'Offer', rejected: 'Declined' };
+  const shortDate = iso => iso ? new Date(iso.endsWith('Z') ? iso : iso + 'Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+  function doneLabel(j) {
+    const d = DONE[j.pipeline_status]; if (!d) return '';
+    return j.pipeline_status === 'rejected' ? 'Declined' : `${d} ✓${j.applied_date ? ' ' + shortDate(j.applied_date) : ''}`;
+  }
+  function actsFor(j) {
+    const done = doneLabel(j);
+    if (done) return `<span class="sv-done" title="In the Pipeline">${done}</span>`;
+    return `<button type="button" class="sv-go" data-pursue="${j.job_id}" title="${PURSUE_TIP}">${PURSUE_LABEL}</button>
+        <button type="button" class="sv-save" data-id="${j.job_id}" ${j.is_saved ? 'disabled' : ''} title="Keep it in the pipeline for later">${j.is_saved ? 'In pipeline' : 'Save'}</button>`;
+  }
+
   // ── Preview and pursue ───────────────────────────────────────────────
   const IN_STUDIO = document.body.classList.contains('embedded');
   const PURSUE_LABEL = IN_STUDIO ? 'Pursue →' : 'Pursue';
@@ -520,11 +544,13 @@
       <p class="sv-over-co">${escH(j.company)}${j.location ? ` · ${escH(j.location)}` : ''}</p>
       <p class="sv-over-meta">${j.relevance_score ? `${j.relevance_score}% match` : ''}${j.matched_keywords?.length ? ` · ${j.matched_keywords.map(escH).join(', ')}` : ''}${age}${j.salary ? ` · ${escH(j.salary)}` : ''}</p>
       <div class="sv-over-acts">
-        <button type="button" class="sv-over-btn sv-over-btn--go" data-pursue="${id}" title="${PURSUE_TIP}">${IN_STUDIO ? 'Pursue in Render →' : 'Pursue'}</button>
-        <button type="button" class="sv-over-btn" data-save="${id}" ${j.is_saved ? 'disabled' : ''}>${j.is_saved ? 'In the pipeline' : 'Save for later'}</button>
+        ${doneLabel(j)
+          ? `<span class="sv-done">${doneLabel(j)} · in the Pipeline</span>`
+          : `<button type="button" class="sv-over-btn sv-over-btn--go" data-pursue="${id}" title="${PURSUE_TIP}">${IN_STUDIO ? 'Pursue in Render →' : 'Pursue'}</button>
+        <button type="button" class="sv-over-btn" data-save="${id}" ${j.is_saved ? 'disabled' : ''}>${j.is_saved ? 'In the pipeline' : 'Save for later'}</button>`}
         <a class="sv-over-btn" href="${escH(j.url)}" target="_blank" rel="noopener">Open the posting ↗</a>
       </div>
-      <p class="sv-over-keys">↑ ↓ the next posting · P pursue · Esc close</p>
+      <p class="sv-over-keys">↑ ↓ the next posting · ${doneLabel(j) ? '' : 'P pursue · '}Esc close</p>
       <p class="sv-over-msg" id="sv-over-msg"></p>
       <div id="sv-over-body"><p class="sv-over-none">Loading the posting…</p></div>`;
     over.scrollTop = 0;
@@ -565,7 +591,7 @@
       const i = ids.indexOf(openId), next = ids[i + (e.key === 'ArrowDown' ? 1 : -1)];
       if (next != null) { openPreview(next); document.querySelector(`.sv-table tr[data-row="${next}"]`)?.scrollIntoView({ block: 'nearest' }); }
     }
-    if (e.key.toLowerCase() === 'p' && openId != null) { e.preventDefault(); pursue(openId); }
+    if (e.key.toLowerCase() === 'p' && openId != null && !doneLabel(jobs.find(x => x.job_id === openId) || {})) { e.preventDefault(); pursue(openId); }
   });
 
   // Pursue: into the pipeline as Preparing, then straight into Render (in the studio).
@@ -577,7 +603,7 @@
       const r = await fetch('/api/pipeline/pursue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job_id: id }) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail || r.status);
-      const j = jobs.find(x => x.job_id === id); if (j) j.is_saved = true;
+      const j = jobs.find(x => x.job_id === id); if (j) { j.is_saved = true; j.pipeline_status = d.status; }
       if (IN_STUDIO) parent.postMessage({ source: 'search', action: 'prepare', pipelineId: d.id }, '*');
       else { if (msg) msg.textContent = 'In the pipeline as Preparing.'; if (btn) btn.textContent = 'Pursued'; render(); }
     } catch (err) {

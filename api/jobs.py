@@ -8,7 +8,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from database import get_db
 from models import Job, Company, KeywordProfile, PipelineJob, Setting
-from profile_terms import facet_terms
+from profile_terms import facet_terms, has_term
 from synonyms import expand_keywords, SYNONYMS
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -27,6 +27,10 @@ class JobResponse(BaseModel):
     is_saved: bool = False
     relevance_score: int = 0
     matched_keywords: List[str] = []
+    # Which track its title matched (engineering / learning), and where it is in the pipeline.
+    track: Optional[str] = None
+    pipeline_status: Optional[str] = None
+    applied_date: Optional[str] = None
 
 
 class JobsListResponse(BaseModel):
@@ -45,27 +49,19 @@ def _score(title: str, keywords: List[str], description: Optional[str] = None) -
     """
     if not keywords:
         return 0, []
-    title_lower = title.lower()
-    desc_lower = (description or '').lower()
     matched = []
     weighted_score = 0.0
     for kw in keywords:
         kw_lower = kw.lower()
-        check_terms = [kw_lower] + SYNONYMS.get(kw_lower, [])
-        for term in check_terms:
-            in_title = term in title_lower
-            in_desc = term in desc_lower
-            if not in_title and not in_desc:
-                continue
-            matched.append(kw)
-            if re.search(r'\b' + re.escape(term) + r'\b', title_lower):
+        for term in [kw_lower] + SYNONYMS.get(kw_lower, []):
+            # Whole words only: a term inside another word ("ai" in "email") doesn't count.
+            if has_term(title, term):
                 weighted_score += 2
-            elif in_title:
-                weighted_score += 1
-            elif re.search(r'\b' + re.escape(term) + r'\b', desc_lower):
+            elif has_term(description, term):
                 weighted_score += 1
             else:
-                weighted_score += 0.5
+                continue
+            matched.append(kw)
             break  # don't double-count multiple synonyms for the same keyword
     max_score = len(keywords) * 2
     pct = min(100, round(weighted_score / max_score * 100)) if max_score else 0
@@ -75,11 +71,11 @@ def _score(title: str, keywords: List[str], description: Optional[str] = None) -
 def _profile_score(job, want: List[str], can: List[str]) -> tuple:
     """What you want leads (the usual title-weighted score); what you can do adds
     the share of your skills the posting asks for (up to 8 count as all of them)."""
-    w, w_matched = _score(job.title, want, job.description) if want else (0, [])
+    w, w_matched = _score(job.title, want, None) if want else (0, [])   # what you want: titles only
     if not can:
         return w, w_matched
     text = f"{job.title} {job.description or ''}".lower()
-    c_matched = [kw for kw in can if re.search(r'\b' + re.escape(kw.lower()) + r'\b', text)]
+    c_matched = [kw for kw in can if has_term(text, kw)]
     c = min(100, round(len(c_matched) / min(len(can), 8) * 100))
     score = round(.7 * w + .3 * c) if want else c
     return score, w_matched + [k for k in c_matched if k not in w_matched]
@@ -114,42 +110,31 @@ def search_jobs(
         )
     )
 
-    if exclude_terms:
-        base_query = base_query.filter(
-            and_(*[~Job.title.ilike(f"%{term}%") for term in exclude_terms])
-        )
-
-    want_keywords: List[str] = []
-    can_keywords: List[str] = []
-    # Resolve selected profile IDs (multi-select takes precedence)
+    # Selected facets: want ones by track (they read titles), can ones (they read the text).
     selected_ids: List[int] = []
     if profile_ids:
         selected_ids = [int(x) for x in profile_ids.split(",") if x.strip().isdigit()]
     elif profile_id:
         selected_ids = [profile_id]
-
-    # Collect unique keywords from all selected profiles (preserve order, dedupe by lowercase)
-    all_keywords: List[str] = []
+    want_facets: List[tuple] = []
+    can_keywords: List[str] = []
     profile_label: Optional[str] = None
     if selected_ids:
-        profiles = db.query(KeywordProfile).filter(KeywordProfile.id.in_(selected_ids)).all()
-        want_keywords = facet_terms(db, "want", selected_ids)
+        profiles = db.query(KeywordProfile).filter(KeywordProfile.id.in_(selected_ids)).order_by(KeywordProfile.position, KeywordProfile.id).all()
+        want_facets = [(p.track or None, p.get_keywords()) for p in profiles if p.facet_side == "want"]
         can_keywords = facet_terms(db, "can", selected_ids)
-        # Postings must match something you want; with no want facet chosen, something you can do.
-        all_keywords = want_keywords or can_keywords
         if len(profiles) == 1:
             profile_label = profiles[0].name
         elif profiles:
             profile_label = f"{len(profiles)} profiles"
-
-        # Filter: must match at least one keyword (+ synonyms) in title or description
-        if all_keywords:
-            expanded = expand_keywords(all_keywords)
-            kw_conds = []
-            for kw in expanded:
-                kw_conds.append(Job.title.ilike(f"%{kw}%"))
-                kw_conds.append(Job.description.ilike(f"%{kw}%"))
-            base_query = base_query.filter(or_(*kw_conds))
+        # A cheap first pass in SQL (substring); whole words are checked below.
+        pre = expand_keywords([k for _, ks in want_facets for k in ks]) if want_facets else expand_keywords(can_keywords)
+        if pre:
+            conds = [Job.title.ilike(f"%{kw}%") for kw in pre]
+            if not want_facets:
+                conds += [Job.description.ilike(f"%{kw}%") for kw in pre]
+            base_query = base_query.filter(or_(*conds))
+    want_keywords = list(dict.fromkeys(k for _, ks in want_facets for k in ks))
 
     if location_type:
         base_query = base_query.filter(Job.location_type == location_type)
@@ -157,26 +142,28 @@ def search_jobs(
         base_query = base_query.filter(Job.location.ilike(f"%{location}%"))
 
     all_rows = base_query.order_by(Job.posted_date.desc()).all()
+    pipeline = {pj.job_id: pj for pj in db.query(PipelineJob).filter(PipelineJob.job_id != None).all()}
 
-    # Per-company cap (applied before scoring to keep dashboard fast)
-    if per_company_limit:
-        company_counts: dict = {}
-        capped = []
-        for row in all_rows:
-            cid = row[0].company_id
-            company_counts[cid] = company_counts.get(cid, 0) + 1
-            if company_counts[cid] <= per_company_limit:
-                capped.append(row)
-        rows = capped
-    else:
-        rows = all_rows
-
-    saved_ids = {pj.job_id for pj in db.query(PipelineJob.job_id).all() if pj.job_id}
+    def title_hits(title: str, keywords: List[str]) -> int:
+        return sum(1 for k in keywords if any(has_term(title, t) for t in [k] + SYNONYMS.get(k.lower(), [])))
 
     results = []
-    for job, company_name in rows:
+    for job, company_name in all_rows:
+        # Words left out of titles, whole words ("intern" no longer hides "Internal …").
+        if any(has_term(job.title, t) for t in exclude_terms):
+            continue
+        track = None
+        if want_facets:
+            hits = [(title_hits(job.title, ks), tr) for tr, ks in want_facets]
+            best = max(hits, key=lambda h: h[0])
+            if best[0] == 0:
+                continue          # what you want is read in the title only
+            track = best[1]
+        elif can_keywords and not any(has_term(f"{job.title} {job.description or ''}", k) for k in can_keywords):
+            continue
         days_old = (datetime.utcnow() - job.posted_date).days if job.posted_date else 0
         score, matched = _profile_score(job, want_keywords, can_keywords)
+        pj = pipeline.get(job.id)
         results.append(JobResponse(
             job_id=job.id,
             company=company_name,
@@ -187,14 +174,25 @@ def search_jobs(
             url=job.url,
             posted_date=job.posted_date.isoformat() if job.posted_date else None,
             days_old=days_old,
-            is_saved=job.id in saved_ids,
+            is_saved=pj is not None,
             relevance_score=score,
             matched_keywords=matched,
+            track=track,
+            pipeline_status=pj.status if pj else None,
+            applied_date=pj.applied_date.isoformat() if pj and pj.applied_date else None,
         ))
 
-    # When profiles active: sort by relevance desc, then recency asc as tiebreak
-    if all_keywords:
+    # Ranked: best first, then newest. Then the per-company cap keeps each company's best.
+    if selected_ids:
         results.sort(key=lambda j: (-j.relevance_score, j.days_old))
+    if per_company_limit:
+        seen: dict = {}
+        kept = []
+        for r in results:
+            seen[r.company] = seen.get(r.company, 0) + 1
+            if seen[r.company] <= per_company_limit:
+                kept.append(r)
+        results = kept
 
     return JobsListResponse(profile=profile_label, total=len(results), results=results)
 
