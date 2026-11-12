@@ -12,7 +12,6 @@
 <nav class="bar3" aria-label="Survey">
   <button type="button" class="bar3-go" id="sv-run" title="Read every verified career page for new postings">Survey now</button>
   <span class="bar3-note" id="sv-last"></span>
-  <span class="bar3-note" id="sv-tracks" title="Postings matching each track; the list alternates them"></span>
   <span class="bar3-spacer"></span>
   <div class="bar3-tabs" role="tablist" aria-label="Where" id="sv-where">
     <button type="button" class="bar3-item is-on" data-value="" role="tab" aria-selected="true">All</button>
@@ -297,7 +296,10 @@
         run.found += d.found; run.added += d.added;
         if (d.timed_out) { run.timedOut.push(d.company); run.problems++; } else if (d.error) { run.failed.push([d.company, d.error]); run.problems++; }
       }
-      else if (d.type === 'done') return endRun(`Done. <b>${d.total_added}</b> new · <b>${d.closed || 0}</b> closed · <b>${d.pruned}</b> gone quiet · <b>${d.errors}</b> ${d.errors === 1 ? 'problem' : 'problems'} · ${clock(secs(run.startedAt))}`, true);
+      else if (d.type === 'done') {
+        const n = d.total_added, c = d.closed || 0;
+        return endRun(`The survey finished in ${clock(secs(run.startedAt))}: ${n ? `${n} new ${n === 1 ? 'posting' : 'postings'}` : 'no new postings'}${c ? `, and ${c} ${c === 1 ? 'posting has' : 'postings have'} closed` : ''}.${d.errors ? ` ${d.errors} career ${d.errors === 1 ? 'page' : 'pages'} couldn't be read; ${d.errors === 1 ? 'it is' : 'they are'} listed below.` : ''}`, true);
+      }
       else if (d.type === 'stopped') return endRun(`Stopped after ${d.index} of ${d.total}. <b>${d.total_added}</b> new ${d.total_added === 1 ? 'posting' : 'postings'} kept. Survey now starts again from the top.`, false);
       else if (d.type === 'error') return endRun(`<span class="sv-err">The survey stopped: ${escH(d.message)}</span>`, false);
       paint();
@@ -461,7 +463,6 @@
     // Ranked by the profile: the two tracks alternate, Learning design first.
     // Ranked by the profile: four learning-design postings for each AI-enablement one.
     const L = rows.filter(j => j.track === 'learning'), A = rows.filter(j => j.track === 'ai');
-    $('sv-tracks').textContent = state.profiles.size && (L.length || A.length) ? `Learning design ${L.length} · AI enablement ${A.length}` : '';
     if (state.profiles.size && !state.sort.col) {
       const mixed = []; let l = 0, a = 0;
       while (l < L.length || a < A.length) {

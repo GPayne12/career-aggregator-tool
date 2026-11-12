@@ -9,7 +9,7 @@ from database import SessionLocal
 from models import Company, Job, KeywordProfile, Setting
 from scraper import JobScraper
 from synonyms import expand_keywords
-from profile_terms import facet_terms, has_term
+from profile_terms import facet_terms, has_term, WINDOW_DAYS
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def _get_exclude_terms(db: Session) -> list:
 def _save_jobs(db: Session, scraper: JobScraper, company: Company,
                scraped_jobs: list, exclude_terms: list,
                keywords_lower: List[str]) -> int:
-    cutoff = datetime.utcnow() - timedelta(days=7)
+    cutoff = datetime.utcnow() - timedelta(days=WINDOW_DAYS)
     exclude_lower = [t.lower() for t in exclude_terms]
 
     # Step 1: exclude terms + date filter, parse posted_date once

@@ -72,3 +72,26 @@ _LEARNING = re.compile(r"\b(instructional|e-?learning|curriculum|(?<!machine )le
 
 def is_engineering(title: Optional[str]) -> bool:
     return bool(title) and bool(_ENGINEERING.search(title)) and not _LEARNING.search(title)
+
+
+# How far back Survey looks, and keeps postings when a board is read (George's
+# choice: a week).
+WINDOW_DAYS = 7
+
+# Learning-design work as a posting's description describes it. A posting whose
+# description shows at least TEXT_MIN of these counts as a learning-design role
+# even when its title says only "Specialist" or "Program Manager".
+LEARNING_WORK = [
+    "instructional design", "instructional designer", "learning design", "learning designer", "learning experience",
+    "curriculum", "course design", "course development", "e-learning", "elearning", "learning management system", "lms",
+    "addie", "storyboard", "storyboards", "adult learning", "learning objectives", "training materials", "training programs",
+    "training program", "facilitator guide", "articulate", "storyline", "rise 360", "captivate", "camtasia", "scorm", "xapi",
+    "needs analysis", "training needs", "microlearning", "blended learning", "learning programs", "learning and development",
+    "enablement programs", "knowledge base", "learners", "learning content", "assessment design", "subject matter experts",
+]
+TEXT_MIN = 3
+
+
+def learning_work(text: Optional[str]) -> List[str]:
+    """Distinct learning-design signs in a posting's text."""
+    return [w for w in LEARNING_WORK if has_term(text, w)] if text else []

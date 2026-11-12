@@ -8,7 +8,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from database import get_db
 from models import Job, Company, KeywordProfile, PipelineJob, Setting
-from profile_terms import facet_terms, has_term, is_engineering
+from profile_terms import facet_terms, has_term, is_engineering, learning_work, TEXT_MIN, WINDOW_DAYS
 from regions import keep as keep_region
 from synonyms import expand_keywords, SYNONYMS
 
@@ -69,6 +69,25 @@ def _score(title: str, keywords: List[str], description: Optional[str] = None) -
     return pct, matched
 
 
+def _fit(job, via: Optional[str], title_terms: List[str], work: List[str], can: List[str]) -> tuple:
+    """How well a posting fits, 0–100, and why.
+      title, up to 60: a wanted term in the title, by how specific it is
+                       ("instructional designer" 60, "curriculum" 50, "trainer" 40);
+                       a role that came in by its description alone gets 30
+      text,  up to 40: learning-design work and your own skills in the description
+                       (8 points each, up to 5)"""
+    if via == "title":
+        longest = max((len(t) for t in title_terms), default=0)
+        title_part = 60 if longest >= 14 else 50 if longest >= 8 else 40
+    else:
+        title_part = 30 if via == "text" else 0
+    text = f"{job.title} {job.description or ''}"
+    skills = [k for k in can if has_term(text, k)]
+    signs = list(dict.fromkeys(work + skills))
+    text_part = min(40, 8 * len(signs))
+    return min(100, title_part + text_part), list(dict.fromkeys(title_terms + signs))[:8]
+
+
 def _profile_score(job, want: List[str], can: List[str]) -> tuple:
     """What you want leads (the usual title-weighted score); what you can do adds
     the share of your skills the posting asks for (up to 8 count as all of them)."""
@@ -92,7 +111,7 @@ def search_jobs(
     per_company_limit: Optional[int] = Query(None),
     db: Session = Depends(get_db),
 ):
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+    seven_days_ago = datetime.utcnow() - timedelta(days=WINDOW_DAYS)   # the window (7 days)
 
     _setting = db.query(Setting).filter(Setting.key == "exclude_terms").first()
     exclude_terms = json.loads(_setting.value) if _setting else []
@@ -130,13 +149,6 @@ def search_jobs(
             profile_label = profiles[0].name
         elif profiles:
             profile_label = f"{len(profiles)} profiles"
-        # A cheap first pass in SQL (substring); whole words are checked below.
-        pre = expand_keywords([k for _, ks in want_facets for k in ks]) if want_facets else expand_keywords(can_keywords)
-        if pre:
-            conds = [Job.title.ilike(f"%{kw}%") for kw in pre]
-            if not want_facets:
-                conds += [Job.description.ilike(f"%{kw}%") for kw in pre]
-            base_query = base_query.filter(or_(*conds))
     want_keywords = list(dict.fromkeys(k for _, ks in want_facets for k in ks))
 
     if location_type:
@@ -159,19 +171,26 @@ def search_jobs(
             continue
         if any(has_term(job.title, t) for t in exclude_terms):
             continue
-        track = None
+        track, via, title_terms = None, None, []
         if want_facets and is_engineering(job.title):
             continue          # engineering titles count for neither track
+        work = learning_work(job.description)
         if want_facets:
-            hits = [(title_hits(job.title, ks), tr) for tr, ks in want_facets]
+            # Two ways in: a wanted term in the title (the track it belongs to), or a
+            # description that plainly describes learning-design work.
+            hits = [(title_hits(job.title, ks), tr, [k for k in ks if any(has_term(job.title, t) for t in [k] + SYNONYMS.get(k.lower(), []))])
+                    for tr, ks in want_facets]
             best = max(hits, key=lambda h: h[0])
-            if best[0] == 0:
-                continue          # what you want is read in the title only
-            track = best[1]
+            if best[0]:
+                track, via, title_terms = best[1], "title", best[2]
+            elif len(work) >= TEXT_MIN and any(tr == "learning" for tr, _ in want_facets):
+                track, via = "learning", "text"
+            else:
+                continue
         elif can_keywords and not any(has_term(f"{job.title} {job.description or ''}", k) for k in can_keywords):
             continue
         days_old = (datetime.utcnow() - job.posted_date).days if job.posted_date else 0
-        score, matched = _profile_score(job, want_keywords, can_keywords)
+        score, matched = _fit(job, via, title_terms, work, can_keywords)
         pj = pipeline.get(job.id)
         results.append(JobResponse(
             job_id=job.id,

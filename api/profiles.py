@@ -10,7 +10,7 @@ from database import get_db
 from datetime import datetime, timedelta
 from sqlalchemy import and_, or_
 from models import KeywordProfile, Job
-from profile_terms import has_term
+from profile_terms import has_term, WINDOW_DAYS
 from synonyms import SYNONYMS
 
 router = APIRouter(prefix="/api/profiles", tags=["profiles"])
@@ -112,7 +112,7 @@ def list_profiles(db: Session = Depends(get_db)):
 def profile_summary(db: Session = Depends(get_db)):
     """The Profile page in one call: each facet with how many open postings from
     the last week it matches (want: in the title; can: anywhere in the posting)."""
-    week = datetime.utcnow() - timedelta(days=7)
+    week = datetime.utcnow() - timedelta(days=WINDOW_DAYS)
     jobs = [((t or "").lower(), (d or "").lower()) for t, d in db.query(Job.title, Job.description).filter(
         Job.is_active == True, or_(Job.posted_date >= week, and_(Job.posted_date == None, Job.fetched_at >= week))).all()]
     facets = []
