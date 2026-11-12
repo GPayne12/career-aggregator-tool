@@ -512,11 +512,11 @@
 
   // ── Where a posting stands in the pipeline ───────────────────────────
   // Once applied (or further), a posting is done here: no Pursue, no Save.
-  const DONE = { applied: 'Applied', interviewing: 'Interviewing', offer: 'Offer', rejected: 'Declined' };
+  const DONE = { applied: 'Applied', interviewing: 'Interviewing', offer: 'Offer', rejected: 'Declined', archived: 'Archived' };
   const shortDate = iso => iso ? new Date(iso.endsWith('Z') ? iso : iso + 'Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
   function doneLabel(j) {
     const d = DONE[j.pipeline_status]; if (!d) return '';
-    return j.pipeline_status === 'rejected' ? 'Declined' : `${d} ✓${j.applied_date ? ' ' + shortDate(j.applied_date) : ''}`;
+    return ['rejected', 'archived'].includes(j.pipeline_status) ? d : `${d} ✓${j.applied_date ? ' ' + shortDate(j.applied_date) : ''}`;
   }
   function actsFor(j) {
     const done = doneLabel(j);

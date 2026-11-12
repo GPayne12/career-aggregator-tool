@@ -38,7 +38,7 @@
 <div class="pl">
   <section class="pl-main" aria-label="Applications">
     <div class="pl-field" id="field">
-      <svg id="pl-svg" role="img" aria-labelledby="pl-title"><title id="pl-title">Applications by stage; higher in a lane moved more recently</title></svg>
+      <svg id="pl-svg" role="img" aria-label="Applications by stage; higher in a lane moved more recently"></svg>
       <div class="pl-key pl-key--left" id="key-left" aria-hidden="true"></div>
       <div class="pl-key pl-key--right" id="key-right" aria-hidden="true"></div>
       <div class="pl-tip" id="tip" hidden></div>
@@ -198,7 +198,9 @@
     { key: 'offer',        label: 'Offer',        color: '#c47f00', quiet: 5 },
   ];
   const DECLINED = { key: 'rejected', label: 'Declined', color: '#c9c3b8', quiet: Infinity };
-  const STAGE = Object.fromEntries([...STAGES, DECLINED].map(s => [s.key, s]));
+  // Archived: kept on record (the List view, the drawer), off the field and the counts.
+  const ARCHIVED = { key: 'archived', label: 'Archived', color: '#b8b2a7', quiet: Infinity };
+  const STAGE = Object.fromEntries([...STAGES, DECLINED, ARCHIVED].map(s => [s.key, s]));
   const ORDER = STAGES.map(s => s.key);
   const PREP_STAGES = new Set(['saved', 'preparing', 'ready']);
   const STEP_NAME = { posting: 'Posting', signaling: 'Signaling', resume: 'Resume updated', letter: 'Letter drafted', exported: 'Letter exported' };
@@ -325,7 +327,7 @@
     });
 
     // Size: company interest, scaled down together when the field gets crowded.
-    const live = items.filter(a => a.status !== 'rejected');
+    const live = items.filter(a => a.status !== 'rejected' && a.status !== 'archived');
     const base = a => 4 + (a.interest || 0) * 1.25;
     const area = geo.lanes.reduce((s, l) => s + (l.x1 - l.x0) * (l.y1 - l.y0), 0);
     const need = live.reduce((s, a) => s + Math.PI * (base(a) + 2) ** 2, 0);
@@ -334,7 +336,7 @@
     const rank = new Map(rejected.map((a, i) => [a.id, i]));
 
     const old = new Map((sim ? sim.nodes() : []).map(n => [n.id, n]));
-    const nodes = items.map(a => {
+    const nodes = items.filter(a => a.status !== 'archived').map(a => {
       const n = old.get(a.id) || { id: a.id };
       n.a = a; n.stage = stageOf(a);
       n.r = n.stage === 'rejected' ? 4 : Math.max(3.5, base(a) * k);
@@ -493,7 +495,7 @@
       <p class="muted"><a href="${esc(a.url)}" target="_blank" rel="noopener">Open the posting ↗</a>${a.salary ? ` · ${esc(a.salary)}` : ''}</p>
 
       <h3>Stage</h3>
-      <div class="stages">${STAGES.map(btn).join('')}${btn(DECLINED)}</div>
+      <div class="stages">${STAGES.map(btn).join('')}${btn(DECLINED)}${btn(ARCHIVED)}</div>
       <p class="keys">← → move a stage · D declined · Esc close</p>
 
       <dl class="facts">
@@ -611,7 +613,7 @@
 
   // ── List view ─────────────────────────────────────────────────────────────
   function renderList() {
-    const groups = [...STAGES, DECLINED].map(s => ({ s, rows: items.filter(a => stageOf(a) === s.key).sort((a, b) => daysIn(a) - daysIn(b)) }));
+    const groups = [...STAGES, DECLINED, ARCHIVED].map(s => ({ s, rows: items.filter(a => stageOf(a) === s.key).sort((a, b) => daysIn(a) - daysIn(b)) }));
     document.getElementById('list').innerHTML = groups.filter(g => g.rows.length).map(({ s, rows }) => `
       <h3><i style="background:${s.color}"></i>${s.label} · ${rows.length}</h3>
       <table class="pl-table"><colgroup><col class="c-t"><col class="c-c"><col class="c-a"><col class="c-p"><col class="c-s"></colgroup><tbody>
@@ -619,7 +621,7 @@
         <td><span class="t">${esc(a.title)}</span></td><td>${esc(a.company)}</td>
         <td class="age${isQuiet(a) ? ' is-quiet' : ''}">${span(daysIn(a))}</td>
         <td class="prep">${PREP_STAGES.has(stageOf(a)) ? `${a.prep}/${a.prep_steps}` : ''}</td>
-        <td><select data-move="${a.id}" aria-label="Stage">${[...STAGES, DECLINED].map(o => `<option value="${o.key}"${o.key === stageOf(a) ? ' selected' : ''}>${o.label}</option>`).join('')}</select></td>
+        <td><select data-move="${a.id}" aria-label="Stage">${[...STAGES, DECLINED, ARCHIVED].map(o => `<option value="${o.key}"${o.key === stageOf(a) ? ' selected' : ''}>${o.label}</option>`).join('')}</select></td>
       </tr>`).join('')}</tbody></table>`).join('') || '<p class="pl-empty" style="position:static">No applications yet.</p>';
   }
   document.getElementById('list').addEventListener('change', e => { const s = e.target.closest('[data-move]'); if (s) move(Number(s.dataset.move), s.value); });

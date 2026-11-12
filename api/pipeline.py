@@ -14,7 +14,8 @@ router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
 # preparing and ready are the application-workflow stages between saving a job
 # and applying (set by the portfolio studio's Render tool).
-STATUSES = ["saved", "preparing", "ready", "applied", "interviewing", "offer", "rejected"]
+# archived: kept on record, out of the way (off the field and the counts).
+STATUSES = ["saved", "preparing", "ready", "applied", "interviewing", "offer", "rejected", "archived"]
 MAX_WORK_BYTES = 2_000_000
 
 
@@ -88,6 +89,7 @@ class PipelineResponse(BaseModel):
     rejected: List[PipelineJobResponse]
     interviewing: List[PipelineJobResponse]
     offer: List[PipelineJobResponse]
+    archived: List[PipelineJobResponse] = []
 
 
 def get_pipeline_job_response(pipeline_job: PipelineJob, db: Session) -> PipelineJobResponse:
@@ -180,6 +182,9 @@ def add_pipeline_job_manual(request: PipelineAddRequest, background: BackgroundT
                 raise HTTPException(status_code=400, detail=f"Bad {field}: {value}")
     if request.status == "applied" and not pipeline_job.applied_date:
         pipeline_job.applied_date = datetime.utcnow()
+    # A history import (a past application) last moved when it was sent, not today.
+    if request.applied_date and pipeline_job.applied_date:
+        pipeline_job.stage_changed_date = pipeline_job.applied_date
     db.add(pipeline_job)
     db.commit()
     db.refresh(pipeline_job)
