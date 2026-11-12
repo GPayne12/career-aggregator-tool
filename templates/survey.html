@@ -536,6 +536,11 @@
         : `<p class="sv-over-none">Pathways has only the title for this one. Open the posting to read it; pursuing it fetches the full text for Render.</p>`;
     } catch { $('sv-over-body').innerHTML = `<p class="sv-over-none">Couldn't load the posting text.</p>`; }
   }
+  document.addEventListener('click', e => {
+    if ($('sv-over').hidden) return;
+    if (e.target.closest('#sv-over, [data-preview], [data-pursue], .sv-save')) return;
+    closePreview();
+  });
   function closePreview() {
     openId = null; $('sv-over').hidden = true;
     document.querySelectorAll('.sv-table tr.is-open').forEach(tr => tr.classList.remove('is-open'));

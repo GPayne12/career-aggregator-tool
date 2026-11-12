@@ -235,8 +235,8 @@
             <th class="sortable" onclick="sortBy('website')">Website <span class="sort-ind">${sortInd('website')}</span></th>
             <th class="sortable" onclick="sortBy('career_url')">Career page <span class="sort-ind">${sortInd('career_url')}</span></th>
             <th class="sortable" onclick="sortBy('status')">Status <span class="sort-ind">${sortInd('status')}</span></th>
-            <th class="col-score sortable" onclick="sortBy('score_a')" title="Advocacy: internal connections (0–3)">A</th>
             <th class="col-score sortable" onclick="sortBy('score_m')" title="Motivation: personal interest (0–3)">M</th>
+            <th class="col-score sortable" onclick="sortBy('score_a')" title="Advocacy: internal connections (0–3)">A</th>
             <th class="col-score sortable" onclick="sortBy('score_p')" title="Postings: keyword-matched listings (0–3)">P*</th>
             <th></th>
           </tr></thead>
@@ -283,7 +283,7 @@
         <td><span data-edit="website" data-id="${c.id}">${websiteCell(c)}</span></td>
         <td><div data-edit="career_url" data-id="${c.id}">${careerCell(c)}</div>${suggestionHtml(c)}</td>
         <td><span class="co-status st-${st}" title="${escH(STATUS[st].hint)}">${STATUS[st].label}</span></td>
-        ${score('score_a', c.score_a)}${score('score_m', c.score_m)}
+        ${score('score_m', c.score_m)}${score('score_a', c.score_a)}
         <td class="col-score" title="Computed from active listings">${c.score_p ?? '<span class="text-muted">—</span>'}</td>
         <td><div class="co-actions">
           ${c.career_url ? `<button type="button" class="co-btn" data-act="check" data-id="${c.id}" title="A trial survey: see what Pathways would collect">Check</button>` : ''}
