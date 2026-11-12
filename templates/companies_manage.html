@@ -7,7 +7,8 @@
   <div class="co-filters" role="tablist" id="co-filters"></div>
   <span class="bar3-spacer"></span>
   <button type="button" class="co-btn co-btn--line" id="co-edit-toggle" aria-pressed="false" title="Show what's editable (or hold ⌥)">✎ Edit</button>
-  <button type="button" class="co-btn co-btn--solid" id="co-lookup" title="Find the website and job board for every company that isn't verified">Look up websites and job boards</button>
+  <button type="button" class="co-btn co-btn--line" id="co-lookup" title="Find the website and job board for every company that isn't verified">Look up websites and job boards</button>
+  <button type="button" class="co-btn co-btn--solid" id="add-open" aria-expanded="false" aria-controls="add-panel" title="LinkedIn intake, one by hand, or a CSV">+ Add companies</button>
 </nav>
 {% endblock %}
 
@@ -27,8 +28,37 @@
 
 <div id="companies-list"></div>
 
-<p class="co-addnote">To add companies, use <a href="/#add">+ Add companies</a> on the Overview.</p>
 </div>
+  {#- Adding companies: LinkedIn intake (in the studio), one by hand, or a list. -#}
+  <aside class="co-addp" id="add-panel" aria-label="Add companies" hidden>
+    <button type="button" class="ov-back" id="add-close" aria-label="Close">Close ×</button>
+    <h2>Add companies</h2>
+    <p class="muted">New companies wait here, in To review, until you verify their career pages; only verified ones are surveyed.</p>
+
+    <h3>From your LinkedIn activity</h3>
+    <div id="add-intake">
+      <p>Go through the companies behind your saved jobs, applications and follows, one card at a time. Keep or pass each one, then add them all together.</p>
+      <button type="button" class="ov-btn ov-btn--solid" id="add-intake-go">Start intake →</button>
+    </div>
+    <p class="muted" id="add-intake-off" hidden>Intake runs in the studio. Open Pathways there to use it.</p>
+
+    <h3>One company</h3>
+    <form id="add-one" class="ov-form">
+      <input type="text" id="add-name" placeholder="Company name" required autocomplete="off">
+      <input type="url" id="add-url" placeholder="Career page (optional)" autocomplete="off">
+      <p class="muted">Leave the career page empty and Pathways will look it up.</p>
+      <button type="submit" class="ov-btn ov-btn--solid" id="add-one-go">Add</button>
+      <p class="ov-msg" id="add-one-msg" aria-live="polite"></p>
+    </form>
+
+    <h3>A list</h3>
+    <form id="add-csv" class="ov-form">
+      <p>A CSV with a <code>name</code> column; <code>career_url</code> is optional.</p>
+      <input type="file" id="add-csv-file" accept=".csv">
+      <button type="submit" class="ov-btn ov-btn--line" id="add-csv-go">Import</button>
+      <p class="ov-msg" id="add-csv-msg" aria-live="polite"></p>
+    </form>
+  </aside>
 
 <style>
   /* Companies, in the portfolio's hand: paper, hairlines, Source Serif for
@@ -127,7 +157,35 @@
   @keyframes co-flash { 0%, 40% { outline:2px solid var(--tang); outline-offset:6px; } 100% { outline-color:transparent; } }
 
   /* Adding by hand: two plain columns */
-  .co-page p.co-addnote { margin-top:28px; border-top:1px solid var(--line); padding-top:12px; font-size:13px; color:var(--ink3); }
+  /* Adding companies: + Add companies in the bar opens this drawer. */
+  .co-addp p { font-size:15px; }
+  .co-addp p.muted { font-size:13px; }
+  .co-addp code { font:12px 'JetBrains Mono', ui-monospace, monospace; background:#f0ede7; padding:1px 4px; border-radius:3px; }
+  .ov-form { display:flex; flex-direction:column; gap:8px; align-items:flex-start; margin:0; }
+  .ov-form input[type=text], .ov-form input[type=url] { width:100%; box-sizing:border-box; margin:0 !important; }
+  .ov-form input[type=file] { font:12px 'JetBrains Mono', ui-monospace, monospace; }
+  .ov-form p { margin:0; }
+  html body .ov-btn { all:unset; box-sizing:border-box; cursor:pointer; padding:8px 14px; border-radius:999px; white-space:nowrap;
+                      font:600 12px 'JetBrains Mono', ui-monospace, monospace !important; }
+  html body .ov-btn--solid { background:#2d6a4f; color:#fff !important; }
+  html body .ov-btn--solid:hover { background:#235840; }
+  html body .ov-btn--line { border:1px solid #d4cfc7; background:#fffefb; color:#5c5a55 !important; }
+  html body .ov-btn--line:hover { background:#f0ede7; }
+  html body .ov-btn:disabled { opacity:.5; cursor:default; }
+  .co-addp p.ov-msg { font-size:13px; color:#5c5a55; min-height:1em; }
+  .ov-msg .ok { color:#2d6a4f; } .ov-msg .err { color:#b42318; }
+
+  .co-addp { position:fixed; top:0; right:0; bottom:0; width:380px; max-width:100%; z-index:20; box-sizing:border-box; overflow:auto;
+             background:#fffefb; border-left:1px solid #d4cfc7; box-shadow:-12px 0 32px rgba(26,25,22,.08); padding:20px 22px 28px;
+             font-family:'Source Serif 4', Georgia, serif; color:#1a1916; }
+  .co-addp[hidden] { display:none; }
+  .co-addp h2 { font:600 18px 'Source Serif 4', Georgia, serif !important; margin:0 0 4px; }
+  .co-addp h3 { font:600 12px 'JetBrains Mono', ui-monospace, monospace !important; color:#8a857c !important; letter-spacing:.02em; margin:22px 0 8px; text-transform:none; }
+  .co-addp p { margin:0 0 6px; }
+  .co-addp .muted { color:#8a857c; }
+  .co-addp a { color:#2d6a4f; }
+  html body .co-addp .ov-back { all:unset; float:right; cursor:pointer; padding:2px 4px; border-radius:6px; font:500 12px 'JetBrains Mono', ui-monospace, monospace !important; color:#5c5a55 !important; }
+  html body .co-addp .ov-back:hover { background:#f0ede7; }
 </style>
 
 <script>
@@ -436,6 +494,72 @@
     };
     es.onerror = () => { es.close(); btn.disabled = false; out.textContent = 'The lookup stopped. Run it again to carry on; finished ones are kept.'; loadCompanies(); };
   });
+
+  const embedded = document.body.classList.contains('embedded');
+  // ── Adding companies ──────────────────────────────────────────────────────
+  function showAdd(open) {
+    document.getElementById('add-panel').hidden = !open;
+    document.getElementById('add-open').setAttribute('aria-expanded', String(open));
+    if (open) document.getElementById('add-name').focus({ preventScroll: true });
+  }
+  document.getElementById('add-open').addEventListener('click', () => showAdd(document.getElementById('add-panel').hidden));
+  document.getElementById('add-close').addEventListener('click', () => showAdd(false));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.getElementById('add-panel').hidden) showAdd(false); });
+
+  // Intake is the studio's own view: ask the studio to open it.
+  document.getElementById('add-intake').hidden = !embedded;
+  document.getElementById('add-intake-off').hidden = embedded;
+  document.getElementById('add-intake-go').addEventListener('click', () => {
+    parent.postMessage({ source: 'search', action: 'intake' }, '*');
+  });
+
+  const say = (id, html) => { document.getElementById(id).innerHTML = html; };
+  async function apiJson(url, opts) {
+    const r = await fetch(url, opts);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(r.status === 409 ? 'Already in Pathways.' : (Array.isArray(d.detail) ? d.detail.map(e => e.msg).join(', ') : d.detail || `Error ${r.status}`));
+    return d;
+  }
+  const FOUND = { verified: 'verified', found: 'a job board was found', page: 'a careers page was found', website: 'only a website was found', none: 'nothing was found yet', unverified: 'its career page waits for you' };
+
+  document.getElementById('add-one').addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = document.getElementById('add-name').value.trim();
+    const career_url = document.getElementById('add-url').value.trim() || null;
+    if (!name) return;
+    const btn = document.getElementById('add-one-go');
+    btn.disabled = true; btn.textContent = 'Adding…'; say('add-one-msg', '');
+    try {
+      let c = await apiJson('/api/companies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, career_url }) });
+      if (!career_url) { say('add-one-msg', 'Added. Looking it up…'); c = await apiJson(`/api/companies/${c.id}/discover`, { method: 'POST' }); }
+      say('add-one-msg', `<span class="ok">Added ${escH(c.name)}: ${FOUND[c.url_status] || 'added'}.</span>`);
+      document.getElementById('add-name').value = ''; document.getElementById('add-url').value = '';
+      await loadCompanies();
+    } catch (err) { say('add-one-msg', `<span class="err">${escH(err.message)}</span>`); }
+    finally { btn.disabled = false; btn.textContent = 'Add'; }
+  });
+
+  document.getElementById('add-csv').addEventListener('submit', async e => {
+    e.preventDefault();
+    const file = document.getElementById('add-csv-file').files[0];
+    if (!file) { say('add-csv-msg', '<span class="err">Choose a CSV file first.</span>'); return; }
+    const btn = document.getElementById('add-csv-go');
+    btn.disabled = true; btn.textContent = 'Importing…'; say('add-csv-msg', '');
+    try {
+      const form = new FormData(); form.append('file', file);
+      const d = await apiJson('/api/companies/upload-csv', { method: 'POST', body: form });
+      let m = `<span class="ok">${d.added} added</span>, ${d.skipped} already in Pathways.`;
+      if (d.added) m += ` Look them up with <b>Look up websites and job boards</b>.`;
+      if (d.errors && d.errors.length) m += ` <span class="err">${escH(d.errors.join('; '))}</span>`;
+      say('add-csv-msg', m);
+      document.getElementById('add-csv-file').value = '';
+      await loadCompanies();
+    } catch (err) { say('add-csv-msg', `<span class="err">Import failed: ${escH(err.message)}</span>`); }
+    finally { btn.disabled = false; btn.textContent = 'Import'; }
+  });
+
+  // The studio can open the drawer directly (after intake closes, say).
+  if (location.hash === '#add') showAdd(true);
 
   document.addEventListener('DOMContentLoaded', loadCompanies);
 </script>

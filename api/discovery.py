@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from discover import company_key, discover
 from models import Discovery
+from profile_terms import want_tracks, title_matches
 
 router = APIRouter(prefix="/api/discovery", tags=["discovery"])
 
@@ -66,14 +67,24 @@ def run_many(db: Session, names: List[str], refresh: bool = False, limit: Option
     return out
 
 
+def with_matches(db: Session, results: Dict[str, Dict]) -> Dict[str, Dict]:
+    """Count, against the profile as it is now, how many of each board's postings match."""
+    tracks = want_tracks(db)
+    for r in results.values():
+        if r.get("titles") is not None:
+            r["matches"] = title_matches(r["titles"], tracks)
+        r.pop("titles", None)   # the count is what the card needs
+    return results
+
+
 @router.post("/lookup")
 def lookup(body: Names, db: Session = Depends(get_db)):
     rows = db.query(Discovery).filter(Discovery.key.in_([company_key(n) for n in body.names])).all()
-    return {"results": {r.key: json.loads(r.result_json) for r in rows}}
+    return {"results": with_matches(db, {r.key: json.loads(r.result_json) for r in rows})}
 
 
 @router.post("/run")
 def run(body: Names, db: Session = Depends(get_db)):
     results = run_many(db, body.names, refresh=body.refresh, limit=RUN_LIMIT)
     missing = [n for n in body.names if company_key(n) and company_key(n) not in results]
-    return {"results": results, "remaining": len(missing)}
+    return {"results": with_matches(db, {k: dict(v) for k, v in results.items()}), "remaining": len(missing)}

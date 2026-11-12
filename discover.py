@@ -162,6 +162,44 @@ def board_jobs(platform: str, url: str) -> Tuple[Optional[int], Optional[str]]:
     return None, None
 
 
+def board_titles(platform: str, url: str, cap: int = 400) -> Optional[List[str]]:
+    """A board's posting titles (up to cap), so a match against the profile can be counted.
+    Workday and SmartRecruiters page; a few pages are enough for a fair count."""
+    p = urlparse(url)
+    parts = [x for x in p.path.strip("/").split("/") if x and not re.fullmatch(r"[a-z]{2}(-[A-Za-z]{2})?", x)]
+    slug = parts[0] if parts else ""
+    try:
+        if platform == "greenhouse":
+            r = requests.get(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs", headers=UA, timeout=TIMEOUT)
+            return [j.get("title", "") for j in r.json().get("jobs", [])][:cap] if r.ok else None
+        if platform == "lever":
+            r = requests.get(f"https://api.lever.co/v0/postings/{slug}?mode=json", headers=UA, timeout=TIMEOUT)
+            return [j.get("text", "") for j in r.json()][:cap] if r.ok and isinstance(r.json(), list) else None
+        if platform == "ashby":
+            r = requests.get(f"https://api.ashbyhq.com/posting-api/job-board/{slug}", headers=UA, timeout=TIMEOUT)
+            return [j.get("title", "") for j in r.json().get("jobs", [])][:cap] if r.ok else None
+        if platform == "workday":
+            tenant = (p.hostname or "").split(".")[0]
+            out: List[str] = []
+            for offset in range(0, 100, 20):
+                r = requests.post(f"https://{p.hostname}/wday/cxs/{tenant}/{slug}/jobs",
+                                  json={"limit": 20, "offset": offset, "searchText": "", "appliedFacets": {}},
+                                  headers={**UA, "Content-Type": "application/json"}, timeout=TIMEOUT)
+                if not r.ok:
+                    break
+                page = [j.get("title", "") for j in r.json().get("jobPostings", [])]
+                out += page
+                if len(page) < 20:
+                    break
+            return out or None
+        if platform == "smartrecruiters":
+            r = requests.get(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100", headers=UA, timeout=TIMEOUT)
+            return [j.get("name", "") for j in r.json().get("content", [])] if r.ok else None
+    except Exception as e:
+        logger.info(f"board titles failed {url}: {e}")
+    return None
+
+
 def boards_on_page(html: str) -> List[Tuple[str, str]]:
     out, seen = [], set()
     for pattern, platform, to_root in ATS_LINKS:
@@ -239,6 +277,10 @@ def discover(name: str) -> Dict:
                     break
             if res["status"] == "found":
                 break
+
+    # The postings' titles, so intake can say how many match the profile.
+    if res["status"] == "found":
+        res["titles"] = board_titles(res["platform"], res["career_url"])
 
     # 3. The careers page alone.
     if res["status"] != "found" and page:

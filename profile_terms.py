@@ -35,3 +35,26 @@ def _word(term: str):
 
 def has_term(text: Optional[str], term: str) -> bool:
     return bool(text) and bool(term.strip()) and _word(term).search(text.lower()) is not None
+
+
+def want_tracks(db: Session) -> List[tuple]:
+    """Want facets as (track, keywords); the same terms Survey matches in titles."""
+    return [(p.track, p.get_keywords()) for p in db.query(KeywordProfile).order_by(KeywordProfile.position, KeywordProfile.id).all()
+            if p.facet_side == "want"]
+
+
+def title_matches(titles: List[str], tracks: List[tuple]) -> dict:
+    """How many titles match what you want, whole words, by track (each title counted once)."""
+    from synonyms import SYNONYMS
+    out = {"learning": 0, "engineering": 0, "total": 0}
+    for t in titles or []:
+        best, hits = None, 0
+        for track, kws in tracks:
+            n = sum(1 for k in kws if any(has_term(t, w) for w in [k] + SYNONYMS.get(k.lower(), [])))
+            if n > hits:
+                best, hits = track, n
+        if hits:
+            out["total"] += 1
+            if best in out:
+                out[best] += 1
+    return out
