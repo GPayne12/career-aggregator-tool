@@ -31,12 +31,11 @@
     <div class="sv-chips" id="sv-profiles"><span class="sv-muted">Loading…</span></div>
   </div>
   <div class="sv-refine-row">
-    <span class="sv-label">Region</span>
+    <span class="sv-label">Where</span>
     <div class="sv-chips" id="sv-region">
-      <button type="button" class="sv-chip is-on" data-value="">Anywhere</button>
-      <button type="button" class="sv-chip" data-value="us">Inside the US</button>
-      <button type="button" class="sv-chip" data-value="near_philly">Near Philadelphia</button>
-      <button type="button" class="sv-chip" data-value="outside">Outside the US</button>
+      <button type="button" class="sv-chip is-on" data-value="na" title="The continental US and Canada">North America</button>
+      <button type="button" class="sv-chip" data-value="corridor" title="DC and Virginia up to Boston, plus remote roles in North America">DC to Boston</button>
+      <button type="button" class="sv-chip" data-value="any" title="Every location">Anywhere</button>
     </div>
   </div>
   <div class="sv-refine-row">
@@ -89,6 +88,8 @@
   html body .bar3-go { all:unset; box-sizing:border-box; cursor:pointer; padding:7px 14px; border-radius:999px; white-space:nowrap;
              font:600 12px var(--mono) !important; background:var(--ok); color:#fff !important; }
   html body .bar3-go:hover { background:#235840; }
+  html body .bar3-go.is-stop { background:#b42318; }
+  html body .bar3-go.is-stop:hover { background:#8f1c13; }
   html body .bar3-go:disabled { opacity:.55; cursor:default; }
   .bar3-note { font:12px var(--mono); color:var(--ink3); margin-left:8px; white-space:nowrap; }
   .bar3-spacer { flex:1; }
@@ -208,7 +209,9 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
-  const state = { profiles: new Set(), where: '', region: '', find: '', sort: { col: null, dir: 1 } };
+  // Where defaults to North America; the choice is remembered in this browser.
+  const savedRegion = (() => { try { return localStorage.getItem('sv-region'); } catch { return null; } })();
+  const state = { profiles: new Set(), where: '', region: ['na', 'corridor', 'any'].includes(savedRegion) ? savedRegion : 'na', find: '', sort: { col: null, dir: 1 } };
   let jobs = [], loaded = false, profilesCache = [];
 
   function escH(s) {
@@ -235,48 +238,96 @@
   }
 
   // ── Survey ───────────────────────────────────────────────────────────
-  function runSurvey() {
+  // Live: the company being read now and a ticking clock, so a slow page is
+  // visible (and named). Stop survey finishes the company being read, keeps what
+  // was found, and stops. A survey already running when the page opens is shown
+  // too, with Stop.
+  let source = null, tick = null, follow = null, run = null;
+  const secs = t => Math.max(0, Math.round((Date.now() - t) / 1000));
+  const clock = s => s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+
+  function setRunning(on) {
     const btn = $('sv-run');
-    btn.disabled = true; btn.textContent = 'Surveying…';
-    $('sv-progress').hidden = false;
-    $('sv-fill').className = 'sv-fill'; $('sv-fill').style.width = '0';
-    $('sv-report').innerHTML = '';
-    const label = $('sv-progress-label');
-    label.textContent = 'Starting…';
-    const timedOut = [], failed = [];
-    let held = 0;
-    const done = () => { btn.disabled = false; btn.textContent = 'Survey now'; };
-    const source = new EventSource('/api/scrape/stream');
-    source.onmessage = (e) => {
+    btn.disabled = false;
+    btn.classList.toggle('is-stop', on);
+    btn.textContent = on ? 'Stop survey' : 'Survey now';
+    btn.title = on ? 'Finish the company being read, keep what was found, and stop' : 'Read every verified career page for new postings';
+  }
+  function paint() {
+    if (!run) return;
+    const now = run.company ? secs(run.companyAt) : 0;
+    let line = run.stopping
+      ? `Stopping after <b>${escH(run.company || 'this company')}</b>…`
+      : run.company ? `Reading <b>${escH(run.company)}</b> · ${run.index} of ${run.total} · ${clock(now)}` : `Starting${run.total ? ` · 0 of ${run.total}` : ''}…`;
+    line += ` <span class="sv-muted">· ${clock(secs(run.startedAt))} so far · ${run.found} found · ${run.added} new${run.problems ? ` · ${run.problems} ${run.problems === 1 ? 'problem' : 'problems'}` : ''}</span>`;
+    if (!run.stopping && run.company && now >= 120) line += `<br><span class="sv-warn">${escH(run.company)} isn't answering. Wait, or stop the survey; what's been read is kept.</span>`;
+    else if (!run.stopping && run.company && now >= 45) line += `<br><span class="sv-muted">${escH(run.company)} is a slow page; still reading.</span>`;
+    $('sv-progress-label').innerHTML = line;
+    $('sv-fill').style.width = run.total ? Math.round(Math.max(0, run.index - 1) / run.total * 100) + '%' : '0';
+  }
+  function beginRun(total = 0) {
+    run = { total, index: 0, company: null, companyAt: Date.now(), startedAt: Date.now(), found: 0, added: 0, problems: 0, timedOut: [], failed: [], held: 0, stopping: false };
+    $('sv-progress').hidden = false; $('sv-fill').className = 'sv-fill'; $('sv-report').innerHTML = '';
+    setRunning(true); clearInterval(tick); tick = setInterval(paint, 1000); paint();
+  }
+  function endRun(html, full) {
+    clearInterval(tick); clearInterval(follow); tick = follow = null;
+    if (source) { source.close(); source = null; }
+    if (full) $('sv-fill').style.width = '100%';
+    $('sv-fill').classList.add('is-done');
+    $('sv-progress-label').innerHTML = html;
+    let r = '';
+    if (run?.timedOut.length) r += `<p class="sv-warn">${plural(run.timedOut.length, 'career page', 'career pages')} timed out; check ${run.timedOut.length === 1 ? 'it' : 'them'} in Landscape:</p><ul>${run.timedOut.map(c => `<li>${escH(c)}</li>`).join('')}</ul>`;
+    if (run?.failed.length) r += `<p class="sv-warn">${plural(run.failed.length, 'career page', 'career pages')} couldn't be read:</p><ul>${run.failed.map(([c, m]) => `<li>${escH(c)} <span class="sv-muted">${escH(m.slice(0, 120))}</span></li>`).join('')}</ul>`;
+    if (run?.held) r += `<p>${plural(run.held, 'more company waits', 'more companies wait')} for a verified career page. <a href="/companies/manage">Review them in Landscape →</a></p>`;
+    $('sv-report').innerHTML = r;
+    run = null; setRunning(false); loadSummary(); loadJobs();
+  }
+  function runSurvey() {
+    if (run) return stopSurvey();
+    beginRun();
+    source = new EventSource('/api/scrape/stream');
+    source.onmessage = e => {
       const d = JSON.parse(e.data);
-      if (d.type === 'start') {
-        held = d.held || 0;
-        label.textContent = `0 of ${d.total} verified companies`;
-      } else if (d.type === 'progress') {
-        $('sv-fill').style.width = Math.round(d.index / d.total * 100) + '%';
-        label.innerHTML = `${d.index} of ${d.total} · <b>${escH(d.company)}</b>`;
-        if (d.timed_out) timedOut.push(d.company);
-        else if (d.error) failed.push([d.company, d.error]);
-      } else if (d.type === 'done') {
-        source.close(); done();
-        $('sv-fill').style.width = '100%'; $('sv-fill').classList.add('is-done');
-        label.innerHTML = `Done. <b>${d.total_added}</b> new · <b>${d.closed || 0}</b> closed · <b>${d.pruned}</b> gone quiet · <b>${d.errors}</b> ${d.errors === 1 ? 'problem' : 'problems'}`;
-        let r = '';
-        if (timedOut.length) r += `<p class="sv-warn">${plural(timedOut.length, 'career page', 'career pages')} timed out; check ${timedOut.length === 1 ? 'it' : 'them'} in Landscape:</p><ul>${timedOut.map(c => `<li>${escH(c)}</li>`).join('')}</ul>`;
-        if (failed.length) r += `<p class="sv-warn">${plural(failed.length, 'career page', 'career pages')} couldn't be read:</p><ul>${failed.map(([c, m]) => `<li>${escH(c)} <span class="sv-muted">${escH(m.slice(0, 120))}</span></li>`).join('')}</ul>`;
-        if (held) r += `<p>${plural(held, 'more company waits', 'more companies wait')} for a verified career page. <a href="/companies/manage">Review them in Landscape →</a></p>`;
-        $('sv-report').innerHTML = r;
-        loadSummary(); loadJobs();
-      } else if (d.type === 'error') {
-        source.close(); done();
-        label.innerHTML = `<span class="sv-err">The survey stopped: ${escH(d.message)}</span>`;
+      if (!run) return;
+      if (d.type === 'busy') { source.close(); source = null; run = null; attach(d); return; }
+      if (d.type === 'start') { run.total = d.total; run.held = d.held || 0; }
+      else if (d.type === 'company') { Object.assign(run, { index: d.index, total: d.total, company: d.company, companyAt: Date.now() }); }
+      else if (d.type === 'progress') {
+        run.found += d.found; run.added += d.added;
+        if (d.timed_out) { run.timedOut.push(d.company); run.problems++; } else if (d.error) { run.failed.push([d.company, d.error]); run.problems++; }
       }
+      else if (d.type === 'done') return endRun(`Done. <b>${d.total_added}</b> new · <b>${d.closed || 0}</b> closed · <b>${d.pruned}</b> gone quiet · <b>${d.errors}</b> ${d.errors === 1 ? 'problem' : 'problems'} · ${clock(secs(run.startedAt))}`, true);
+      else if (d.type === 'stopped') return endRun(`Stopped after ${d.index} of ${d.total}. <b>${d.total_added}</b> new ${d.total_added === 1 ? 'posting' : 'postings'} kept. Survey now starts again from the top.`, false);
+      else if (d.type === 'error') return endRun(`<span class="sv-err">The survey stopped: ${escH(d.message)}</span>`, false);
+      paint();
     };
     source.onerror = () => {
-      source.close(); done();
-      label.innerHTML = '<span class="sv-err">Lost the connection to Pathways. Check its log in the dev dashboard.</span>';
+      if (!run) return;
+      endRun(`<span class="sv-err">Lost the connection to the survey${run.company ? ` while reading ${escH(run.company)}` : ''}. What was read is kept. Survey now to try again.</span>`, false);
     };
   }
+  async function stopSurvey() {
+    if (!run || run.stopping) return;
+    run.stopping = true; paint();
+    const btn = $('sv-run'); btn.disabled = true; btn.textContent = 'Stopping…';
+    try { await fetch('/api/scrape/stop', { method: 'POST' }); } catch { /* the status poll or the stream ends it */ }
+  }
+  // A survey already running (started before this page opened): follow its status.
+  function attach(s) {
+    beginRun(s.total);
+    Object.assign(run, { index: s.index, company: s.company, companyAt: Date.now() - (s.company_seconds || 0) * 1000,
+      startedAt: Date.now() - (s.seconds || 0) * 1000, found: s.found || 0, added: s.added || 0, problems: s.errors || 0 });
+    paint();
+    follow = setInterval(async () => {
+      const t = await fetch('/api/scrape/status').then(r => r.json()).catch(() => null);
+      if (!run) return;
+      if (!t || !t.running) return endRun(run.stopping ? `Stopped. <b>${run.added}</b> new ${run.added === 1 ? 'posting' : 'postings'} kept.` : `Finished. <b>${run.added}</b> new ${run.added === 1 ? 'posting' : 'postings'}.`, !run.stopping);
+      if (t.company !== run.company) run.companyAt = Date.now() - (t.company_seconds || 0) * 1000;
+      Object.assign(run, { index: t.index, total: t.total, company: t.company, found: t.found, added: t.added, problems: t.errors });
+    }, 2000);
+  }
+  fetch('/api/scrape/status').then(r => r.json()).then(s => { if (s.running) attach(s); }).catch(() => {});
   $('sv-run').addEventListener('click', runSurvey);
 
   // ── Refine ───────────────────────────────────────────────────────────
@@ -286,7 +337,7 @@
     e.currentTarget.setAttribute('aria-expanded', String(open));
   });
   function markRefined() {
-    $('sv-refine-dot').hidden = !(state.profiles.size || state.region);
+    $('sv-refine-dot').hidden = !(state.profiles.size || state.region !== 'na');
   }
 
   async function loadProfiles() {
@@ -326,8 +377,8 @@
   $('sv-region').addEventListener('click', (e) => {
     const b = e.target.closest('.sv-chip'); if (!b) return;
     state.region = b.dataset.value;
-    $('sv-region').querySelectorAll('.sv-chip').forEach(x => x.classList.toggle('is-on', x === b));
-    markRefined(); render();
+    try { localStorage.setItem('sv-region', state.region); } catch { /* fine */ }
+    paintRegion(); markRefined(); loadJobs();
   });
 
   function renderTerms(terms) {
@@ -362,33 +413,10 @@
     findTimer = setTimeout(() => { state.find = $('sv-find').value.toLowerCase().trim(); render(); }, 150);
   });
 
-  // ── Regions ──────────────────────────────────────────────────────────
-  // States fully within 160 miles of Philadelphia, and cities in the states that straddle the line.
-  const NEAR_PHILLY_STATES = [', pa', ', nj', ', de', ', md', ', dc'];
-  const NEAR_PHILLY_CITIES = ['new york', 'nyc', 'brooklyn', 'manhattan', 'bronx', 'queens', 'long island',
-    'stamford, ct', 'bridgeport, ct', 'new haven, ct', 'richmond, va', 'mclean', 'arlington, va', 'alexandria, va',
-    'reston, va', 'herndon, va', 'fairfax, va', 'falls church', 'tysons'];
-  const NON_US = ['canada','united kingdom','germany','france','australia','india','china','japan','singapore','netherlands',
-    'ireland','sweden','norway','denmark','finland','switzerland','austria','belgium','poland','spain','italy','portugal',
-    'brazil','israel','south korea','new zealand','south africa','mexico','toronto','vancouver','montreal','calgary','ottawa',
-    'bangalore','bengaluru','mumbai','hyderabad','pune','chennai','berlin','munich','frankfurt','hamburg','sydney','melbourne',
-    'brisbane','tokyo','osaka','beijing','shanghai','shenzhen','amsterdam','stockholm','oslo','copenhagen','helsinki','zurich',
-    'geneva','vienna','brussels','warsaw','madrid','barcelona','milan','lisbon','tel aviv','seoul','auckland','dubai'];
-  // ", ST" catches "City, ST" and keeps Vienna, VA or Milan, MI inside the US.
-  const US_STATES = ['al','ak','az','ar','ca','co','ct','de','fl','ga','hi','id','il','in','ia','ks','ky','la','me','md','ma','mi',
-    'mn','ms','mo','mt','ne','nv','nh','nj','nm','ny','nc','nd','oh','ok','or','pa','ri','sc','sd','tn','tx','ut','vt','va','wa',
-    'wv','wi','wy','dc'].map(s => ', ' + s);
-  function isUS(loc) {
-    if (!loc) return true;
-    const l = loc.toLowerCase();
-    if (l.includes('united states') || US_STATES.some(s => l.includes(s))) return true;
-    return !NON_US.some(k => l.includes(k));
+  function paintRegion() {
+    $('sv-region').querySelectorAll('.sv-chip').forEach(x => x.classList.toggle('is-on', x.dataset.value === state.region));
   }
-  function nearPhilly(loc) {
-    if (!loc) return true;
-    const l = loc.toLowerCase();
-    return NEAR_PHILLY_STATES.some(s => l.includes(s)) || NEAR_PHILLY_CITIES.some(c => l.includes(c));
-  }
+  paintRegion();
 
   // ── Postings ─────────────────────────────────────────────────────────
   async function loadJobs() {
@@ -396,6 +424,7 @@
     const p = new URLSearchParams({ per_company_limit: '10' });
     if (state.profiles.size) p.set('profile_ids', [...state.profiles].join(','));
     if (state.where) p.set('location_type', state.where);
+    if (state.region !== 'any') p.set('region', state.region);
     loaded = false;
     $('sv-count').textContent = '';
     $('sv-list').innerHTML = '<p class="sv-empty">Loading…</p>';
@@ -411,9 +440,6 @@
     const q = state.find;
     return jobs.filter(j => {
       if (q && !j.title.toLowerCase().includes(q) && !j.company.toLowerCase().includes(q)) return false;
-      if (state.region === 'us' && !isUS(j.location)) return false;
-      if (state.region === 'outside' && isUS(j.location)) return false;
-      if (state.region === 'near_philly' && !nearPhilly(j.location)) return false;
       return true;
     });
   }

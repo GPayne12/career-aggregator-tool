@@ -1,5 +1,7 @@
 import json
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Generator, List
 from sqlalchemy.orm import Session
@@ -108,6 +110,21 @@ def _save_jobs(db: Session, scraper: JobScraper, company: Company,
     return added
 
 
+# What the survey is doing right now (for the page's live view, and for a page opened
+# mid-survey), and the flag Stop sets. One survey at a time.
+STATE: dict = {"running": False}
+CANCEL = threading.Event()
+
+
+def survey_status() -> dict:
+    s = dict(STATE)
+    now = time.time()
+    s["seconds"] = round(now - s["started"]) if s.get("started") else 0
+    s["company_seconds"] = round(now - s["company_started"]) if s.get("company_started") else 0
+    s.pop("started", None); s.pop("company_started", None)
+    return s
+
+
 def iter_scrape() -> Generator[dict, None, None]:
     """Generator that scrapes all active companies and yields progress events.
 
@@ -117,8 +134,16 @@ def iter_scrape() -> Generator[dict, None, None]:
                            "found": int, "added": int, "timed_out": bool, "error": str|None}
       {"type": "done",     "total_added": int, "pruned": int, "timed_out": int, "errors": int}
     """
+    if STATE.get("running"):
+        yield {"type": "busy", **survey_status()}
+        return
+    CANCEL.clear()
+    STATE.clear()
+    STATE.update(running=True, index=0, total=0, company=None, started=time.time(), company_started=None, found=0, added=0, errors=0)
     db: Session = SessionLocal()
-    scraper = JobScraper()
+    # A board is read at most 15 pages deep (300 postings, newest first); a careers
+    # page gets 30 seconds. A big Workday board otherwise holds the survey for minutes.
+    scraper = JobScraper(rate_limit_seconds=0.4, max_pages=15, page_timeout_ms=30000)
 
     try:
         exclude_terms = _get_exclude_terms(db)
@@ -144,9 +169,16 @@ def iter_scrape() -> Generator[dict, None, None]:
         timed_out_count = 0
         closed_total = 0
 
+        STATE["total"] = total
         yield {"type": "start", "total": total, "held": held}
 
+        stopped = False
         for i, company in enumerate(companies, 1):
+            if CANCEL.is_set():
+                stopped = True
+                break
+            STATE.update(index=i, company=company.name, company_started=time.time())
+            yield {"type": "company", "index": i, "total": total, "company": company.name}
             if not company.career_url:
                 yield {"type": "progress", "index": i, "total": total,
                        "company": company.name, "found": 0, "added": 0,
@@ -157,8 +189,9 @@ def iter_scrape() -> Generator[dict, None, None]:
                 scraped_jobs = scraper.scrape_career_page(company.career_url)
                 added = _save_jobs(db, scraper, company, scraped_jobs, exclude_terms, keywords_lower)
                 # A posting that's no longer on the board has closed. Only when the
-                # board answered: an empty or failed read says nothing about closures.
-                if scraped_jobs:
+                # board answered in full: an empty, failed or cut-short read says
+                # nothing about closures.
+                if scraped_jobs and not getattr(scraper, "truncated", False):
                     still_open = {j['url'].strip() for j in scraped_jobs if j.get('url')}
                     for job in db.query(Job).filter(Job.company_id == company.id, Job.is_active == True).all():
                         if job.url not in still_open:
@@ -166,6 +199,7 @@ def iter_scrape() -> Generator[dict, None, None]:
                             closed_total += 1
                 db.commit()
                 total_added += added
+                STATE["found"] += len(scraped_jobs); STATE["added"] += added
                 logger.info(f"Scraped {company.name}: {len(scraped_jobs)} found, {added} new")
                 yield {"type": "progress", "index": i, "total": total,
                        "company": company.name, "found": len(scraped_jobs),
@@ -181,10 +215,18 @@ def iter_scrape() -> Generator[dict, None, None]:
                 else:
                     logger.error(f"Error scraping {company.name}: {err_str}")
                 errors += 1
+                STATE["errors"] += 1
                 db.rollback()
                 yield {"type": "progress", "index": i, "total": total,
                        "company": company.name, "found": 0, "added": 0,
                        "timed_out": is_timeout, "error": err_str}
+
+        if stopped:
+            # Stopped by request: keep what was read; the clean-up waits for a full survey.
+            db.commit()
+            yield {"type": "stopped", "index": STATE["index"], "total": total,
+                   "total_added": total_added, "errors": errors}
+            return
 
         seven_days_ago = datetime.utcnow() - timedelta(days=7)
         pruned_jobs = db.query(Job).filter(
@@ -208,6 +250,8 @@ def iter_scrape() -> Generator[dict, None, None]:
         db.rollback()
         yield {"type": "error", "message": str(e)}
     finally:
+        STATE["running"] = False
+        CANCEL.clear()
         scraper.close()
         db.close()
 

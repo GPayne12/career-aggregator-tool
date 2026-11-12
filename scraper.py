@@ -221,6 +221,7 @@ class JobScraper:
 
         while True:
             if self.max_pages and pages >= self.max_pages:
+                self.truncated = True   # more pages left: what wasn't read isn't closed
                 break
             pages += 1
             try:
@@ -637,6 +638,7 @@ class JobScraper:
     # ── Dispatch ─────────────────────────────────────────────────────────────
 
     def scrape_career_page(self, url: str) -> List[Dict]:
+        self.truncated = False
         platform = self.detect_platform(url)
         logger.info(f"Scraping {url} (platform: {platform})")
 

@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from database import SessionLocal
 from models import Company, Job, Setting
-from scheduler import scrape_all_companies, iter_scrape
+from scheduler import scrape_all_companies, iter_scrape, survey_status, CANCEL
 
 router = APIRouter(prefix="/api/scrape", tags=["scrape"])
 
@@ -33,6 +33,19 @@ def scrape_summary():
         return {"verified": verified, "held": live.count() - verified, "last_run": last_run}
     finally:
         db.close()
+
+
+@router.get("/status")
+def scrape_status():
+    """Is a survey running, and what is it reading now? (For a page opened mid-survey.)"""
+    return survey_status()
+
+
+@router.post("/stop")
+def scrape_stop():
+    """Stop after the company being read; what was read is kept."""
+    CANCEL.set()
+    return {"stopping": bool(survey_status().get("running"))}
 
 
 @router.get("/stream")

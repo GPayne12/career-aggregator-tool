@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from database import get_db
 from models import Job, Company, KeywordProfile, PipelineJob, Setting
 from profile_terms import facet_terms, has_term
+from regions import keep as keep_region
 from synonyms import expand_keywords, SYNONYMS
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -87,6 +88,7 @@ def search_jobs(
     profile_id: Optional[int] = Query(None),     # single-profile compat (dashboard)
     location_type: Optional[str] = Query(None),
     location: Optional[str] = Query(None),
+    region: Optional[str] = Query(None),       # na (continental North America), corridor (DC to Boston, plus remote), any
     per_company_limit: Optional[int] = Query(None),
     db: Session = Depends(get_db),
 ):
@@ -150,6 +152,9 @@ def search_jobs(
     results = []
     for job, company_name in all_rows:
         # Words left out of titles, whole words ("intern" no longer hides "Internal …").
+        # Where: read from the posting's location, before each company's cap.
+        if region in ("na", "corridor") and not keep_region(job.location, region, job.location_type):
+            continue
         if any(has_term(job.title, t) for t in exclude_terms):
             continue
         track = None
