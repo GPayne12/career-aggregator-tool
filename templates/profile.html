@@ -121,7 +121,7 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const embedded = document.body.classList.contains('embedded');
-  const TRACK_NAME = { learning: 'Learning design', engineering: 'Engineering' };
+  const TRACK_NAME = { learning: 'Learning design', ai: 'AI enablement' };
   let facets = [], openPostings = 0, excluded = [];
 
   async function api(path, opts = {}) {
@@ -155,7 +155,7 @@
       <div class="pf-facet-head">
         <span class="pf-name" data-act="rename" tabindex="0" title="Click to rename">${esc(f.name)}</span>
         <span class="pf-open" title="Open postings from the last week this facet matches"><b>${f.open}</b> open</span>
-        ${f.side === 'want' ? `<button type="button" class="pf-btn pf-btn--quiet pf-track" data-act="track" title="Survey alternates the two tracks; click to switch">${TRACK_NAME[f.track] || 'No track'}</button>` : ''}
+        ${f.side === 'want' ? `<button type="button" class="pf-btn pf-btn--quiet pf-track" data-act="track" title="Survey alternates the two tracks; click to switch">${TRACK_NAME[f.track] || 'Not searched'}</button>` : ''}
         <span class="pf-acts">
           <button type="button" class="pf-btn pf-btn--quiet" data-act="flip" title="Move to ${other === 'can' ? 'What you can do' : 'What you want'}">${other === 'can' ? 'Move to can →' : '← Move to want'}</button>
           <button type="button" class="pf-btn pf-btn--quiet pf-btn--danger" data-act="remove">Remove</button>
@@ -234,7 +234,8 @@
     if (act === 'rename') return startRename(t);
     if (act === 'drop' && f) return save(f, { keywords: f.keywords.filter((_, i) => i !== Number(t.dataset.i)) });
     if (act === 'flip' && f) return save(f, { side: f.side === 'want' ? 'can' : 'want' });
-    if (act === 'track' && f) return save(f, { track: { learning: 'engineering', engineering: '' }[f.track] ?? 'learning' });
+    // Learning design → AI enablement → not searched (paused) → Learning design
+    if (act === 'track' && f) return save(f, { track: { learning: 'ai', ai: '' }[f.track] ?? 'learning' });
     if (act === 'remove' && f) {
       t.parentElement.innerHTML = `<button type="button" class="pf-btn pf-btn--quiet pf-btn--danger" data-act="remove-yes">Remove ${esc(f.name)}?</button><button type="button" class="pf-btn pf-btn--quiet" data-act="remove-no">Keep</button>`;
       return;

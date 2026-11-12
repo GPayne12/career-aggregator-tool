@@ -500,6 +500,15 @@ class JobScraper:
                 except Exception:
                     pass
 
+    @staticmethod
+    def _clean_title(t: str) -> str:
+        """Careers pages often wrap a title with an icon's name and a teaser:
+        "iconExecutive Assistant: The D. E. Shaw group seeks ..." → "Executive Assistant"."""
+        t = re.sub(r"^\s*icon(?=[A-Z])", "", (t or "").replace("\xa0", " ")).strip()
+        if len(t) > 60 and ": " in t:
+            t = t.split(": ", 1)[0].strip()
+        return t
+
     def _parse_generic_html(self, html: str, base_url: str) -> List[Dict]:
         soup = BeautifulSoup(html, 'html.parser')
 
@@ -554,6 +563,7 @@ class JobScraper:
                 if date_el:
                     posted_date = date_el.strip()
 
+                title = self._clean_title(title) if title else title
                 if title and url:
                     jobs.append({'title': title, 'location': location,
                                  'salary': salary, 'url': url,

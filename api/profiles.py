@@ -199,8 +199,8 @@ def update_profile(profile_id: int, profile: KeywordProfileUpdate, db: Session =
     if profile.side is not None:
         db_profile.side = _side(profile.side)
     if profile.track is not None:
-        if profile.track not in ("engineering", "learning", ""):
-            raise HTTPException(status_code=400, detail="track must be 'engineering', 'learning' or ''")
+        if profile.track not in ("learning", "ai", ""):
+            raise HTTPException(status_code=400, detail="track must be 'learning', 'ai' or '' (paused)")
         db_profile.track = profile.track or None
 
     db.commit()

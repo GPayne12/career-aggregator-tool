@@ -58,7 +58,8 @@ class KeywordProfile(Base):
     # in posting titles) or "can" (skills, matched in posting text).
     side = Column(String(10), nullable=True)
     position = Column(Integer, nullable=True)
-    # For want facets: "engineering" or "learning". Survey shows the two tracks 1:1.
+    # For want facets: "learning" or "ai" (AI enablement); none = paused (not searched).
+    # Survey shows four learning-design postings for each AI-enablement one.
     track = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

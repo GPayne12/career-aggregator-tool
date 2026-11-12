@@ -459,11 +459,15 @@
     if (!loaded) return;
     let rows = visible();
     // Ranked by the profile: the two tracks alternate, Learning design first.
-    const L = rows.filter(j => j.track === 'learning'), E = rows.filter(j => j.track === 'engineering');
-    $('sv-tracks').textContent = state.profiles.size && (L.length || E.length) ? `Learning design ${L.length} · Engineering ${E.length}` : '';
+    // Ranked by the profile: four learning-design postings for each AI-enablement one.
+    const L = rows.filter(j => j.track === 'learning'), A = rows.filter(j => j.track === 'ai');
+    $('sv-tracks').textContent = state.profiles.size && (L.length || A.length) ? `Learning design ${L.length} · AI enablement ${A.length}` : '';
     if (state.profiles.size && !state.sort.col) {
-      const mixed = [];
-      for (let i = 0; i < Math.max(L.length, E.length); i++) { if (L[i]) mixed.push(L[i]); if (E[i]) mixed.push(E[i]); }
+      const mixed = []; let l = 0, a = 0;
+      while (l < L.length || a < A.length) {
+        for (let k = 0; k < 4 && l < L.length; k++) mixed.push(L[l++]);
+        if (a < A.length) mixed.push(A[a++]);
+      }
       rows = [...mixed, ...rows.filter(j => !j.track)];
     }
     if (state.sort.col) {
@@ -472,7 +476,7 @@
     }
     const ranked = state.profiles.size > 0;
     const shown = rows.length < jobs.length ? `${rows.length} of ${jobs.length} postings` : plural(jobs.length, 'posting', 'postings');
-    $('sv-count').textContent = shown + (ranked && !state.sort.col ? ' · best first, the two tracks alternating' : '');
+    $('sv-count').textContent = shown + (ranked && !state.sort.col ? ' · best first, four learning design to one AI enablement' : '');
     if (!rows.length) {
       $('sv-list').innerHTML = `<p class="sv-empty">${jobs.length ? 'Nothing matches. Loosen the filters above.' : 'No open postings from the last week. Survey now to read the verified career pages.'}</p>`;
       return;
@@ -487,7 +491,7 @@
 
   function row(j, ranked) {
     const age = !j.posted_date ? '—' : j.days_old > 0 ? `${j.days_old}d ago` : 'today';
-    const trackName = { learning: 'Learning design', engineering: 'Engineering' }[j.track];
+    const trackName = { learning: 'Learning design', ai: 'AI enablement' }[j.track];
     const kw = ranked && (trackName || j.matched_keywords.length) ? `<span class="sv-kw">${[trackName, ...j.matched_keywords.map(escH)].filter(Boolean).join(' · ')}</span>` : '';
     const match = ranked ? `<td class="sv-match c-hide"><i style="width:${Math.round(j.relevance_score * .4)}px"></i>${j.relevance_score}%</td>` : '';
     return `<tr data-row="${j.job_id}"${openId === j.job_id ? ' class="is-open"' : ''}>

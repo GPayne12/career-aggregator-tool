@@ -8,7 +8,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from database import get_db
 from models import Job, Company, KeywordProfile, PipelineJob, Setting
-from profile_terms import facet_terms, has_term
+from profile_terms import facet_terms, has_term, is_engineering
 from regions import keep as keep_region
 from synonyms import expand_keywords, SYNONYMS
 
@@ -123,7 +123,8 @@ def search_jobs(
     profile_label: Optional[str] = None
     if selected_ids:
         profiles = db.query(KeywordProfile).filter(KeywordProfile.id.in_(selected_ids)).order_by(KeywordProfile.position, KeywordProfile.id).all()
-        want_facets = [(p.track or None, p.get_keywords()) for p in profiles if p.facet_side == "want"]
+        # Paused want facets (no track) aren't searched.
+        want_facets = [(p.track, p.get_keywords()) for p in profiles if p.facet_side == "want" and p.track]
         can_keywords = facet_terms(db, "can", selected_ids)
         if len(profiles) == 1:
             profile_label = profiles[0].name
@@ -147,7 +148,8 @@ def search_jobs(
     pipeline = {pj.job_id: pj for pj in db.query(PipelineJob).filter(PipelineJob.job_id != None).all()}
 
     def title_hits(title: str, keywords: List[str]) -> int:
-        return sum(1 for k in keywords if any(has_term(title, t) for t in [k] + SYNONYMS.get(k.lower(), [])))
+        # Weighted by length: "AI enablement" beats "enablement" when both tracks match.
+        return sum(len(k) for k in keywords if any(has_term(title, t) for t in [k] + SYNONYMS.get(k.lower(), [])))
 
     results = []
     for job, company_name in all_rows:
@@ -158,6 +160,8 @@ def search_jobs(
         if any(has_term(job.title, t) for t in exclude_terms):
             continue
         track = None
+        if want_facets and is_engineering(job.title):
+            continue          # engineering titles count for neither track
         if want_facets:
             hits = [(title_hits(job.title, ks), tr) for tr, ks in want_facets]
             best = max(hits, key=lambda h: h[0])

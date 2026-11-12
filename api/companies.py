@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import requests as http_requests
 from database import get_db, SessionLocal
 from models import Company, Discovery, Job, KeywordProfile
-from profile_terms import facet_terms, has_term
+from profile_terms import facet_terms, has_term, is_engineering
 from scraper import JobScraper
 from discover import board_jobs, boards_on_page, company_key
 from api.discovery import run_many
@@ -125,7 +125,7 @@ def _compute_p_scores(db: Session) -> dict:
     counts: dict = {}
     for company_id, title in active_jobs:
         title_lower = title.lower()
-        if any(has_term(title_lower, kw) for kw in keywords):
+        if not is_engineering(title_lower) and any(has_term(title_lower, kw) for kw in keywords):
             counts[company_id] = counts.get(company_id, 0) + 1
 
     return {cid: min(3, n) for cid, n in counts.items()}
@@ -175,7 +175,7 @@ def company_field(db: Session = Depends(get_db)):
     for cid, title, fetched in db.query(Job.company_id, Job.title, Job.fetched_at).filter(
             Job.is_active == True, Job.fetched_at >= week).all():
         open_jobs[cid] = open_jobs.get(cid, 0) + 1
-        if keywords and any(has_term(title, k) for k in keywords):
+        if keywords and not is_engineering(title) and any(has_term(title, k) for k in keywords):
             matched[cid] = matched.get(cid, 0) + 1
             if fetched and fetched >= fresh:
                 fresh_matched[cid] = fresh_matched.get(cid, 0) + 1

@@ -20,6 +20,8 @@ def facet_terms(db: Session, side: Optional[str] = None, ids: Optional[List[int]
     for p in q.order_by(KeywordProfile.position, KeywordProfile.id).all():
         if side and p.facet_side != side:
             continue
+        if p.facet_side == "want" and not p.track:
+            continue   # a want facet with no track is paused: not searched
         for kw in p.get_keywords():
             if kw.lower() not in seen:
                 seen.add(kw.lower()); out.append(kw)
@@ -40,17 +42,19 @@ def has_term(text: Optional[str], term: str) -> bool:
 def want_tracks(db: Session) -> List[tuple]:
     """Want facets as (track, keywords); the same terms Survey matches in titles."""
     return [(p.track, p.get_keywords()) for p in db.query(KeywordProfile).order_by(KeywordProfile.position, KeywordProfile.id).all()
-            if p.facet_side == "want"]
+            if p.facet_side == "want" and p.track]
 
 
 def title_matches(titles: List[str], tracks: List[tuple]) -> dict:
     """How many titles match what you want, whole words, by track (each title counted once)."""
     from synonyms import SYNONYMS
-    out = {"learning": 0, "engineering": 0, "total": 0}
+    out = {"learning": 0, "ai": 0, "total": 0}
     for t in titles or []:
+        if is_engineering(t):
+            continue
         best, hits = None, 0
         for track, kws in tracks:
-            n = sum(1 for k in kws if any(has_term(t, w) for w in [k] + SYNONYMS.get(k.lower(), [])))
+            n = sum(len(k) for k in kws if any(has_term(t, w) for w in [k] + SYNONYMS.get(k.lower(), [])))   # the more specific term wins
             if n > hits:
                 best, hits = track, n
         if hits:
@@ -58,3 +62,13 @@ def title_matches(titles: List[str], tracks: List[tuple]) -> dict:
             if best in out:
                 out[best] += 1
     return out
+
+
+# Engineering titles count for neither track, unless the title is unmistakably
+# about learning ("E-learning Developer", "Learning Engineer", "Instructional ...").
+_ENGINEERING = re.compile(r"\b(engineer|engineering|software|developer|scientist|machine learning|sre|devops|backend|front[- ]?end|full[- ]?stack)\b", re.I)
+_LEARNING = re.compile(r"\b(instructional|e-?learning|curriculum|(?<!machine )learning engineer|learning design|learning experience|learning technolog)", re.I)
+
+
+def is_engineering(title: Optional[str]) -> bool:
+    return bool(title) and bool(_ENGINEERING.search(title)) and not _LEARNING.search(title)
