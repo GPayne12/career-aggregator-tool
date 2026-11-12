@@ -67,9 +67,10 @@
   <p class="sv-count" id="sv-count"></p>
   <div id="sv-list"></div>
 </div>
+<aside class="sv-over" id="sv-over" aria-label="Posting" hidden></aside>
 
 <style>
-  .sv-page, .bar3, .sv-refine {
+  .sv-page, .bar3, .sv-refine, .sv-over {
     --ink:#1a1916; --ink2:#5c5a55; --ink3:#8a857c; --line:#d4cfc7; --hair:#e9e5dd; --paper:#fffefb; --bg:#faf9f7; --surface:#f0ede7;
     --ok:#2d6a4f; --warn:#b5642a; --miss:#b42318; --tang:#c47f00;
     --mono:'JetBrains Mono', ui-monospace, Menlo, monospace; --serif:'Source Serif 4', Georgia, serif; }
@@ -165,6 +166,36 @@
   html body .sv-save { all:unset; cursor:pointer; font:500 12px var(--mono) !important; color:var(--ok) !important; padding:4px 8px; border-radius:6px; margin:-1px 0 0 -8px; }
   html body .sv-save:hover { background:var(--surface); }
   html body .sv-save:disabled { color:var(--ink3) !important; cursor:default; background:none; }
+
+  /* Row actions */
+  html body .sv-go { all:unset; cursor:pointer; font:600 12px var(--mono) !important; color:var(--ok) !important; padding:4px 8px; border-radius:6px; margin:-1px 0 0 -8px; white-space:nowrap; }
+  html body .sv-go:hover { background:var(--surface); }
+  .sv-acts { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
+  .sv-table tr.is-open > td { background:rgba(45,106,79,.06) !important; }
+  .sv-table col.c-act { width:9%; }
+
+  /* Preview: a posting, read without leaving Survey */
+  .sv-over { position:fixed; top:0; right:0; bottom:0; width:min(560px, 100%); z-index:20; box-sizing:border-box; overflow:auto;
+             background:var(--paper); border-left:1px solid var(--line); box-shadow:-14px 0 36px rgba(26,25,22,.10); padding:22px 26px 40px;
+             font-family:var(--serif); color:var(--ink); }
+  .sv-over[hidden] { display:none; }
+  .sv-over h2 { font:600 18px/1.3 var(--serif) !important; margin:0 0 4px; padding-right:70px; }
+  .sv-over p.sv-over-co { margin:0 0 4px; font-size:15px; color:var(--ink2); }
+  .sv-over p.sv-over-meta { margin:0; font:12px var(--mono); color:var(--ink3); }
+  .sv-over-acts { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:16px 0 18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+  html body .sv-over-btn { all:unset; box-sizing:border-box; cursor:pointer; padding:8px 14px; border-radius:999px; white-space:nowrap;
+                           font:600 12px var(--mono) !important; border:1px solid var(--line); background:var(--paper); color:var(--ink2) !important; }
+  html body .sv-over-btn:hover { background:var(--surface); }
+  html body .sv-over-btn--go { background:var(--ok); border-color:var(--ok); color:#fff !important; }
+  html body .sv-over-btn--go:hover { background:#235840; }
+  html body .sv-over-btn:disabled { opacity:.55; cursor:default; }
+  html body .sv-over-close { all:unset; position:absolute; top:20px; right:22px; cursor:pointer; padding:4px 6px; border-radius:6px; font:500 12px var(--mono) !important; color:var(--ink2) !important; }
+  html body .sv-over-close:hover { background:var(--surface); }
+  .sv-over a { color:var(--ok); }
+  .sv-over p.sv-over-keys { margin:0 0 14px; font:12px var(--mono); color:var(--ink3); }
+  .sv-over-text { font-size:15px; line-height:1.6; white-space:pre-wrap; color:var(--ink); }
+  .sv-over p.sv-over-none { font-size:13px; color:var(--ink3); font-style:italic; }
+  .sv-over p.sv-over-msg { margin:0; font:12px var(--mono); color:var(--ok); }
 
   @media (max-width: 56em) {
     .bar3-find input { width:160px; }
@@ -273,10 +304,22 @@
       const id = Number(b.dataset.id);
       state.profiles.has(id) ? state.profiles.delete(id) : state.profiles.add(id);
     }
+    rememberLens(); paintLens(); markRefined(); loadJobs();
+  });
+  // Survey is targeted by default: ranked and filtered by your whole profile. The
+  // choice is remembered in this browser.
+  function paintLens() {
     const every = profilesCache.length && profilesCache.every(p => state.profiles.has(p.id));
     $('sv-profiles').querySelectorAll('.sv-chip').forEach(x => x.classList.toggle('is-on', x.dataset.id === 'all' ? every : state.profiles.has(Number(x.dataset.id))));
-    markRefined(); loadJobs();
-  });
+  }
+  function rememberLens() { try { localStorage.setItem('sv-lens', JSON.stringify([...state.profiles])); } catch { /* fine */ } }
+  function recallLens() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('sv-lens') || 'null'); } catch { /* fine */ }
+    const ids = new Set(profilesCache.map(p => p.id));
+    state.profiles = new Set(Array.isArray(saved) ? saved.filter(id => ids.has(id)) : [...ids]);
+    paintLens(); markRefined();
+  }
 
   $('sv-region').addEventListener('click', (e) => {
     const b = e.target.closest('.sv-chip'); if (!b) return;
@@ -409,13 +452,16 @@
     const age = !j.posted_date ? '—' : j.days_old > 0 ? `${j.days_old}d ago` : 'today';
     const kw = ranked && j.matched_keywords.length ? `<span class="sv-kw">${j.matched_keywords.map(escH).join(' · ')}</span>` : '';
     const match = ranked ? `<td class="sv-match c-hide"><i style="width:${Math.round(j.relevance_score * .4)}px"></i>${j.relevance_score}%</td>` : '';
-    return `<tr>
-      <td><a class="sv-title" href="${escH(j.url)}" target="_blank" rel="noopener">${escH(j.title)}</a>${kw}</td>
+    return `<tr data-row="${j.job_id}"${openId === j.job_id ? ' class="is-open"' : ''}>
+      <td><a class="sv-title" href="${escH(j.url)}" data-preview="${j.job_id}" title="Read it here (⌘-click opens the posting)">${escH(j.title)}</a>${kw}</td>
       <td class="sv-co">${escH(j.company)}</td>
       <td class="sv-loc c-hide" title="${escH(j.location || '')}">${escH(j.location || '—')}</td>
       ${match}
       <td class="sv-age">${age}</td>
-      <td><button type="button" class="sv-save" data-id="${j.job_id}" ${j.is_saved ? 'disabled' : ''} title="Add to the pipeline">${j.is_saved ? 'Saved' : 'Save'}</button></td>
+      <td><div class="sv-acts">
+        <button type="button" class="sv-go" data-pursue="${j.job_id}" title="${PURSUE_TIP}">${PURSUE_LABEL}</button>
+        <button type="button" class="sv-save" data-id="${j.job_id}" ${j.is_saved ? 'disabled' : ''} title="Keep it in the pipeline for later">${j.is_saved ? 'Saved' : 'Save'}</button>
+      </div></td>
     </tr>`;
   }
 
@@ -426,6 +472,11 @@
       state.sort = { col, dir: state.sort.col === col ? -state.sort.dir : 1 };
       render(); return;
     }
+    const pv = e.target.closest('[data-preview]');
+    if (pv && !(e.metaKey || e.ctrlKey || e.shiftKey)) { e.preventDefault(); return openPreview(Number(pv.dataset.preview)); }
+    if (pv) { pv.target = '_blank'; return; }
+    const go = e.target.closest('[data-pursue]');
+    if (go) return pursue(Number(go.dataset.pursue), go);
     const b = e.target.closest('.sv-save');
     if (!b || b.disabled) return;
     b.disabled = true; b.textContent = '…';
@@ -450,6 +501,87 @@
     a.click(); URL.revokeObjectURL(a.href);
   });
 
-  loadSummary(); loadProfiles(); loadTerms(); loadJobs();
+  // ── Preview and pursue ───────────────────────────────────────────────
+  const IN_STUDIO = document.body.classList.contains('embedded');
+  const PURSUE_LABEL = IN_STUDIO ? 'Pursue →' : 'Pursue';
+  const PURSUE_TIP = IN_STUDIO ? 'Into Render now: Signaling, then the letter' : 'Into the pipeline as Preparing';
+  let openId = null;
+
+  async function openPreview(id) {
+    const j = jobs.find(x => x.job_id === id); if (!j) return;
+    openId = id;
+    document.querySelectorAll('.sv-table tr[data-row]').forEach(tr => tr.classList.toggle('is-open', Number(tr.dataset.row) === id));
+    const over = $('sv-over');
+    const age = !j.posted_date ? '' : j.days_old > 0 ? ` · posted ${j.days_old}d ago` : ' · posted today';
+    over.hidden = false;
+    over.innerHTML = `
+      <button type="button" class="sv-over-close" data-close>Close ×</button>
+      <h2>${escH(j.title)}</h2>
+      <p class="sv-over-co">${escH(j.company)}${j.location ? ` · ${escH(j.location)}` : ''}</p>
+      <p class="sv-over-meta">${j.relevance_score ? `${j.relevance_score}% match` : ''}${j.matched_keywords?.length ? ` · ${j.matched_keywords.map(escH).join(', ')}` : ''}${age}${j.salary ? ` · ${escH(j.salary)}` : ''}</p>
+      <div class="sv-over-acts">
+        <button type="button" class="sv-over-btn sv-over-btn--go" data-pursue="${id}" title="${PURSUE_TIP}">${IN_STUDIO ? 'Pursue in Render →' : 'Pursue'}</button>
+        <button type="button" class="sv-over-btn" data-save="${id}" ${j.is_saved ? 'disabled' : ''}>${j.is_saved ? 'In the pipeline' : 'Save for later'}</button>
+        <a class="sv-over-btn" href="${escH(j.url)}" target="_blank" rel="noopener">Open the posting ↗</a>
+      </div>
+      <p class="sv-over-keys">↑ ↓ the next posting · P pursue · Esc close</p>
+      <p class="sv-over-msg" id="sv-over-msg"></p>
+      <div id="sv-over-body"><p class="sv-over-none">Loading the posting…</p></div>`;
+    over.scrollTop = 0;
+    try {
+      const d = await (await fetch(`/api/jobs/${id}`)).json();
+      if (openId !== id) return;
+      $('sv-over-body').innerHTML = d.description && d.description.trim().length > 80
+        ? `<div class="sv-over-text">${escH(d.description.trim())}</div>`
+        : `<p class="sv-over-none">Search has only the title for this one. Open the posting to read it; pursuing it fetches the full text for Render.</p>`;
+    } catch { $('sv-over-body').innerHTML = `<p class="sv-over-none">Couldn't load the posting text.</p>`; }
+  }
+  function closePreview() {
+    openId = null; $('sv-over').hidden = true;
+    document.querySelectorAll('.sv-table tr.is-open').forEach(tr => tr.classList.remove('is-open'));
+  }
+  $('sv-over').addEventListener('click', e => {
+    if (e.target.closest('[data-close]')) return closePreview();
+    const go = e.target.closest('[data-pursue]'); if (go) return pursue(Number(go.dataset.pursue), go);
+    const sv = e.target.closest('[data-save]');
+    if (sv && !sv.disabled) {
+      sv.disabled = true;
+      fetch('/api/pipeline/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job_id: Number(sv.dataset.save) }) })
+        .then(r => { sv.textContent = (r.ok || r.status === 409) ? 'In the pipeline' : 'Save for later'; if (!(r.ok || r.status === 409)) sv.disabled = false;
+          const j = jobs.find(x => x.job_id === Number(sv.dataset.save)); if (j && (r.ok || r.status === 409)) { j.is_saved = true; render(); } });
+    }
+  });
+  document.addEventListener('keydown', e => {
+    if ($('sv-over').hidden || e.target.closest('input, textarea, select')) return;
+    if (e.key === 'Escape') return closePreview();
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const ids = [...document.querySelectorAll('.sv-table tr[data-row]')].map(tr => Number(tr.dataset.row));
+      const i = ids.indexOf(openId), next = ids[i + (e.key === 'ArrowDown' ? 1 : -1)];
+      if (next != null) { openPreview(next); document.querySelector(`.sv-table tr[data-row="${next}"]`)?.scrollIntoView({ block: 'nearest' }); }
+    }
+    if (e.key.toLowerCase() === 'p' && openId != null) { e.preventDefault(); pursue(openId); }
+  });
+
+  // Pursue: into the pipeline as Preparing, then straight into Render (in the studio).
+  async function pursue(id, btn) {
+    const msg = $('sv-over-msg');
+    if (btn) { btn.disabled = true; btn.textContent = 'Opening Render…'; }
+    if (msg && openId === id) msg.textContent = 'Adding it to the pipeline…';
+    try {
+      const r = await fetch('/api/pipeline/pursue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job_id: id }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || r.status);
+      const j = jobs.find(x => x.job_id === id); if (j) j.is_saved = true;
+      if (IN_STUDIO) parent.postMessage({ source: 'search', action: 'prepare', pipelineId: d.id }, '*');
+      else { if (msg) msg.textContent = 'In the pipeline as Preparing.'; if (btn) btn.textContent = 'Pursued'; render(); }
+    } catch (err) {
+      if (btn) { btn.disabled = false; btn.textContent = IN_STUDIO ? 'Pursue →' : 'Pursue'; }
+      if (msg) { msg.style.color = 'var(--miss)'; msg.textContent = `Couldn't pursue it: ${err.message}`; }
+    }
+  }
+
+  loadSummary(); loadTerms();
+  loadProfiles().then(() => { recallLens(); loadJobs(); });
 </script>
 {% endblock %}

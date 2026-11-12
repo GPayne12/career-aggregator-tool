@@ -205,4 +205,4 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     company = db.query(Company).filter(Company.id == job.company_id).first()
-    return job.to_dict(company_name=company.name if company else None)
+    return {**job.to_dict(company_name=company.name if company else None), "description": job.description}

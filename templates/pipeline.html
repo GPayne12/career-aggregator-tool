@@ -199,7 +199,7 @@
   const STAGE = Object.fromEntries([...STAGES, DECLINED].map(s => [s.key, s]));
   const ORDER = STAGES.map(s => s.key);
   const PREP_STAGES = new Set(['saved', 'preparing', 'ready']);
-  const STEP_NAME = { posting: 'Posting', suggestions: 'Resume suggestions', resume: 'Resume updated', letter: 'Letter drafted', exported: 'Letter exported' };
+  const STEP_NAME = { posting: 'Posting', signaling: 'Signaling', resume: 'Resume updated', letter: 'Letter drafted', exported: 'Letter exported' };
   const SURFACE = '#faf9f7', DAY = 864e5;
   const embedded = document.body.classList.contains('embedded');
 
@@ -418,7 +418,7 @@
   // ── Hover ─────────────────────────────────────────────────────────────────
   function stepsOf(a) {
     const c = a.checklist || {};
-    return [['posting', a.has_posting], ['suggestions', a.has_suggestions], ['resume', !!c.resumeUpdated], ['letter', a.has_letter], ['exported', !!c.exported]];
+    return [['posting', a.has_posting], ['signaling', a.has_suggestions], ['resume', !!c.resumeUpdated], ['letter', a.has_letter], ['exported', !!c.exported]];
   }
   function showTip(e, a) {
     const tip = document.getElementById('tip'), box = document.getElementById('field').getBoundingClientRect();
@@ -503,7 +503,7 @@
 
       <h3>Preparation · ${a.prep} of ${a.prep_steps}</h3>
       <ul class="checks">${stepsOf(a).map(([n, ok]) => `<li class="${ok ? 'done' : ''}"><span>${ok ? '✓' : '○'}</span>${STEP_NAME[n]}</li>`).join('')}</ul>
-      ${embedded ? `<div class="row"><button type="button" class="pl-btn pl-btn--solid" data-act="prepare" title="Resume suggestions and a cover letter, in Render">Prepare in Render →</button></div>` : ''}
+      ${embedded ? `<div class="row"><button type="button" class="pl-btn pl-btn--solid" data-act="prepare" title="Signaling and a cover letter, in Render">Prepare in Render →</button></div>` : ''}
 
       <h3>Notes</h3>
       <textarea id="notes" placeholder="Who you spoke to, what's next…">${esc(a.notes || '')}</textarea>

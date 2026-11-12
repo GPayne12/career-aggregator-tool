@@ -1,4 +1,5 @@
 import re
+import html as html_lib
 import time
 import requests
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
@@ -139,10 +140,25 @@ class JobScraper:
         self._playwright = None
 
     @staticmethod
-    def _strip_html(html: str) -> str:
-        if not html:
+    def _strip_html(text: str) -> str:
+        """Posting HTML to readable text: paragraphs and list items on their own lines.
+        Greenhouse sends its HTML escaped (&lt;p&gt;), so unescape it first."""
+        if not text:
             return ''
-        return BeautifulSoup(html, 'html.parser').get_text(separator=' ', strip=True)
+        if '&lt;' in text:
+            text = html_lib.unescape(text)
+        soup = BeautifulSoup(text, 'html.parser')
+        for br in soup.find_all('br'):
+            br.replace_with('\n')
+        for li in soup.find_all('li'):
+            li.insert_before('• ')
+        for el in soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol']):
+            el.insert_after('\n\n')          # a blank line between paragraphs
+        for el in soup.find_all(['li', 'div', 'tr']):
+            el.insert_after('\n')
+        out = re.sub(r'[ \t\xa0]+', ' ', soup.get_text())
+        out = re.sub(r' *\n[ \n]*', lambda m: '\n\n' if m.group(0).count('\n') > 1 else '\n', out)
+        return out.strip()
 
     def detect_platform(self, url: str) -> str:
         if any(x in url for x in ['myworkdayjobs.com', 'workday.com/wday']):

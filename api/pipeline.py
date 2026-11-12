@@ -187,6 +187,24 @@ def add_pipeline_job_manual(request: PipelineAddRequest, background: BackgroundT
     return get_pipeline_job_response(pipeline_job, db)
 
 
+@router.post("/pursue")
+def pursue_job(request: PipelineSaveRequest, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Survey's "Pursue in Render": find or make this posting's pipeline entry, move
+    it to Preparing if it was only saved, and return its id for Render."""
+    job = db.query(Job).filter(Job.id == request.job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    pj = db.query(PipelineJob).filter(PipelineJob.job_id == job.id).first()
+    if not pj:
+        save_job(request, background, db)
+        pj = db.query(PipelineJob).filter(PipelineJob.job_id == job.id).first()
+    if pj.status == "saved":
+        pj.status = "preparing"
+        pj.stage_changed_date = datetime.utcnow()
+        db.commit()
+    return {"id": pj.id, "status": pj.status}
+
+
 @router.post("/save", status_code=201)
 def save_job(request: PipelineSaveRequest, background: BackgroundTasks, db: Session = Depends(get_db)):
     """Save a job to the pipeline"""
