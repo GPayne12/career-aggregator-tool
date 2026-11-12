@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from database import get_db
 from models import Job, Company, KeywordProfile, PipelineJob, Setting
 from profile_terms import (facet_terms, has_term, is_engineering, WINDOW_DAYS, ADJACENT, NOT_ADJACENT,
-                           adjacent_title, craft_in, sales_only, CORE_TITLE, LIGHT, light_role)
+                           adjacent_title, craft_in, sales_only, CORE_TITLE, LIGHT, light_role, bridge_role)
 from regions import keep as keep_region
 from synonyms import expand_keywords, SYNONYMS
 
@@ -73,7 +73,8 @@ def _score(title: str, keywords: List[str], description: Optional[str] = None) -
 def _fit(job, via: Optional[str], title_terms: List[str], can: List[str], want: List[str]) -> tuple:
     """How well a posting fits, 0–100, and why. Honest rather than flattering:
       title,   up to 50: a core learning-design title 50; another of your role terms 35;
-                         an engineering-light or customer-experience role 25;
+                         an engineering-light, customer-experience, AI-hybrid,
+                         workforce or design role 25;
                          a learning-adjacent title word 20; in by its description only 10
       details, up to 50: 5 for each detail from your profile the description names
                          (craft, your skills, your role terms), up to 10 of them.
@@ -82,7 +83,7 @@ def _fit(job, via: Optional[str], title_terms: List[str], can: List[str], want: 
         title_part = 50 if CORE_TITLE.search(job.title or "") else 35
     elif via == "adjacent":
         title_part = 50 if CORE_TITLE.search(job.title or "") else 20
-    elif via == "light":
+    elif via in ("light", "bridge"):
         title_part = 25
     else:
         title_part = 10 if via == "text" else 0
@@ -192,6 +193,9 @@ def search_jobs(
             elif light_role(job.title, job.description, can_keywords):
                 # Engineering-light or customer-experience, with instructional-design overlap.
                 track, via, title_terms = ("ai" if re.search(r"\bAI\b", job.title) else "learning"), "light", [LIGHT.search(job.title).group(0).lower()]
+            elif (bridge := bridge_role(job.title, job.description)):
+                # Customer success and experience, AI hybrids, workforce and design roles.
+                track, via, title_terms = bridge[0], "bridge", [bridge[1]]
             elif craft_in(job.description) and not sales_only(job.title):
                 track, via = "learning", "text"
             else:

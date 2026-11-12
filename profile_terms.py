@@ -167,3 +167,34 @@ def light_role(title: Optional[str], description: Optional[str], can: List[str])
         return True
     skills = [k for k in can if k.lower() not in _COMMON_SKILLS and has_term(description, k)] if description else []
     return len(skills) >= 2
+
+
+# ── Bridge roles: included by title alone ───────────────────────────────────
+# Many boards (Workday above all) give no description to read, so these come in
+# on the title. Each is a role where learning-design and AI skills carry over.
+CX_TITLE = re.compile(r"\b(customer|client|member) (?:success|experience|education|enablement|onboarding|"
+                      r"programs?|outcomes|adoption|journey)\b|\bcx\b", re.I)
+WORKFORCE_TITLE = re.compile(r"\b(workforce (?:transformation|development|readiness)|employee experience|people programs?|"
+                             r"associate experience|readiness|digital adoption|knowledge (?:manager|management)|"
+                             r"content (?:strateg(?:y|ist)|author|designer|design|developer)|outcomes manager)\b", re.I)
+AI_WORD = re.compile(r"\b(ai|genai|generative|agentic|llms?|artificial intelligence)\b", re.I)
+DESIGN_TITLE = re.compile(r"\b((?:product|ux|experience|service|interaction|learning|content|instructional) designer|"
+                          r"design (?:lead|manager|director)|director,? design)\b", re.I)
+# Not bridges, whatever else the title says.
+NOT_BRIDGE = re.compile(r"\b(counsel|attorney|legal|regulatory|recruit(?:er|ing)|tax|accounting|accountant|"
+                        r"payroll|security|phlebotom|blood|technician|interior)\b", re.I)
+
+
+def bridge_role(title, description):
+    """(track, label) for a bridge role, or None."""
+    if not title or NOT_BRIDGE.search(title) or NOT_ADJACENT.search(title) or sales_only(title):
+        return None
+    if CX_TITLE.search(title):
+        return ("ai" if AI_WORD.search(title) else "learning"), CX_TITLE.search(title).group(0).lower()
+    if AI_WORD.search(title):
+        return "ai", "AI"
+    if WORKFORCE_TITLE.search(title):
+        return "learning", WORKFORCE_TITLE.search(title).group(0).lower()
+    if DESIGN_TITLE.search(title) and description and (AI_WORD.search(description) or LEARN_WORD.search(description)):
+        return "learning", DESIGN_TITLE.search(title).group(0).lower()
+    return None
