@@ -8,7 +8,8 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from database import get_db
 from models import Job, Company, KeywordProfile, PipelineJob, Setting
-from profile_terms import facet_terms, has_term, is_engineering, learning_work, TEXT_MIN, WINDOW_DAYS
+from profile_terms import (facet_terms, has_term, is_engineering, WINDOW_DAYS, ADJACENT, NOT_ADJACENT,
+                           adjacent_title, craft_in, sales_only, CORE_TITLE, LIGHT, light_role)
 from regions import keep as keep_region
 from synonyms import expand_keywords, SYNONYMS
 
@@ -69,23 +70,25 @@ def _score(title: str, keywords: List[str], description: Optional[str] = None) -
     return pct, matched
 
 
-def _fit(job, via: Optional[str], title_terms: List[str], work: List[str], can: List[str]) -> tuple:
-    """How well a posting fits, 0–100, and why.
-      title, up to 60: a wanted term in the title, by how specific it is
-                       ("instructional designer" 60, "curriculum" 50, "trainer" 40);
-                       a role that came in by its description alone gets 30
-      text,  up to 40: learning-design work and your own skills in the description
-                       (8 points each, up to 5)"""
+def _fit(job, via: Optional[str], title_terms: List[str], can: List[str], want: List[str]) -> tuple:
+    """How well a posting fits, 0–100, and why. Honest rather than flattering:
+      title,   up to 50: a core learning-design title 50; another of your role terms 35;
+                         an engineering-light or customer-experience role 25;
+                         a learning-adjacent title word 20; in by its description only 10
+      details, up to 50: 5 for each detail from your profile the description names
+                         (craft, your skills, your role terms), up to 10 of them.
+    A posting with no description to read can't score high: there's little to go on."""
     if via == "title":
-        longest = max((len(t) for t in title_terms), default=0)
-        title_part = 60 if longest >= 14 else 50 if longest >= 8 else 40
+        title_part = 50 if CORE_TITLE.search(job.title or "") else 35
+    elif via == "adjacent":
+        title_part = 50 if CORE_TITLE.search(job.title or "") else 20
+    elif via == "light":
+        title_part = 25
     else:
-        title_part = 30 if via == "text" else 0
-    text = f"{job.title} {job.description or ''}"
-    skills = [k for k in can if has_term(text, k)]
-    signs = list(dict.fromkeys(work + skills))
-    text_part = min(40, 8 * len(signs))
-    return min(100, title_part + text_part), list(dict.fromkeys(title_terms + signs))[:8]
+        title_part = 10 if via == "text" else 0
+    desc = job.description or ""
+    details = list(dict.fromkeys(craft_in(desc) + [k for k in can if has_term(desc, k)] + [k for k in want if has_term(desc, k)]))
+    return min(100, title_part + min(50, 5 * len(details))), list(dict.fromkeys(title_terms + details))[:8]
 
 
 def _profile_score(job, want: List[str], can: List[str]) -> tuple:
@@ -174,23 +177,29 @@ def search_jobs(
         track, via, title_terms = None, None, []
         if want_facets and is_engineering(job.title):
             continue          # engineering titles count for neither track
-        work = learning_work(job.description)
+        if want_facets and NOT_ADJACENT.search(job.title):
+            continue          # "Paid Training", clinical facilitators: not learning roles
         if want_facets:
-            # Two ways in: a wanted term in the title (the track it belongs to), or a
-            # description that plainly describes learning-design work.
+            # Generous: a wanted term in the title, or any learning-adjacent title word,
+            # or one piece of instructional-design craft named in the description.
             hits = [(title_hits(job.title, ks), tr, [k for k in ks if any(has_term(job.title, t) for t in [k] + SYNONYMS.get(k.lower(), []))])
                     for tr, ks in want_facets]
             best = max(hits, key=lambda h: h[0])
             if best[0]:
                 track, via, title_terms = best[1], "title", best[2]
-            elif len(work) >= TEXT_MIN and any(tr == "learning" for tr, _ in want_facets):
+            elif adjacent_title(job.title):
+                track, via, title_terms = ("ai" if re.search(r"\bAI\b", job.title) else "learning"), "adjacent", [m.lower() for m in ADJACENT.findall(job.title)][:2]
+            elif light_role(job.title, job.description, can_keywords):
+                # Engineering-light or customer-experience, with instructional-design overlap.
+                track, via, title_terms = ("ai" if re.search(r"\bAI\b", job.title) else "learning"), "light", [LIGHT.search(job.title).group(0).lower()]
+            elif craft_in(job.description) and not sales_only(job.title):
                 track, via = "learning", "text"
             else:
                 continue
         elif can_keywords and not any(has_term(f"{job.title} {job.description or ''}", k) for k in can_keywords):
             continue
         days_old = (datetime.utcnow() - job.posted_date).days if job.posted_date else 0
-        score, matched = _fit(job, via, title_terms, work, can_keywords)
+        score, matched = _fit(job, via, title_terms, can_keywords, want_keywords)
         pj = pipeline.get(job.id)
         results.append(JobResponse(
             job_id=job.id,
