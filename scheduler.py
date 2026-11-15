@@ -175,7 +175,36 @@ def survey_status() -> dict:
     return s
 
 
-def iter_scrape() -> Generator[dict, None, None]:
+# The survey runs in its own thread, so the page watching it can close, reload or
+# lose its connection (a dropped tunnel, 2026-11-14) without freezing it. Its events
+# are kept here for the page to follow.
+EVENTS: list = []
+_START = threading.Lock()
+
+
+def start_survey() -> bool:
+    """Start a survey in the background, unless one is running already."""
+    with _START:
+        if STATE.get("running"):
+            return False
+        EVENTS.clear()
+        STATE.clear()
+        STATE.update(running=True, index=0, total=0, company=None, started=time.time(), company_started=None, found=0, added=0, errors=0)
+        threading.Thread(target=_run_survey, name="survey", daemon=True).start()
+        return True
+
+
+def _run_survey() -> None:
+    try:
+        for event in iter_scrape(claimed=True):
+            EVENTS.append(event)
+    except Exception as e:   # iter_scrape reports its own errors; this is the last resort
+        logger.error(f"Survey thread failed: {e}")
+        EVENTS.append({"type": "error", "message": str(e)})
+        STATE["running"] = False
+
+
+def iter_scrape(claimed: bool = False) -> Generator[dict, None, None]:
     """Generator that scrapes all active companies and yields progress events.
 
     Event shapes:
@@ -184,7 +213,7 @@ def iter_scrape() -> Generator[dict, None, None]:
                            "found": int, "added": int, "timed_out": bool, "error": str|None}
       {"type": "done",     "total_added": int, "pruned": int, "timed_out": int, "errors": int}
     """
-    if STATE.get("running"):
+    if STATE.get("running") and not claimed:
         yield {"type": "busy", **survey_status()}
         return
     CANCEL.clear()

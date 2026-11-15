@@ -4,7 +4,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from database import SessionLocal
 from models import Company, Job, Setting
-from scheduler import scrape_all_companies, iter_scrape, survey_status, CANCEL
+import time
+from scheduler import scrape_all_companies, survey_status, start_survey, CANCEL, EVENTS, STATE
 
 router = APIRouter(prefix="/api/scrape", tags=["scrape"])
 
@@ -50,10 +51,23 @@ def scrape_stop():
 
 @router.get("/stream")
 def stream_scrape():
-    """Stream scrape progress as Server-Sent Events."""
+    """Start a survey and stream its progress as Server-Sent Events. The survey runs
+    in the background: if this stream closes, the survey carries on (follow it with
+    /status). A survey already running answers "busy"."""
     def event_generator():
-        for event in iter_scrape():
-            yield f"data: {json.dumps(event)}\n\n"
+        if not start_survey():
+            yield f"data: {json.dumps({'type': 'busy', **survey_status()})}\n\n"
+            return
+        i = 0
+        while True:
+            while i < len(EVENTS):
+                event = EVENTS[i]; i += 1
+                yield f"data: {json.dumps(event)}\n\n"
+                if event["type"] in ("done", "stopped", "error"):
+                    return
+            if not STATE.get("running"):
+                return
+            time.sleep(0.25)
 
     return StreamingResponse(
         event_generator(),
