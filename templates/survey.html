@@ -265,6 +265,11 @@
     if (!run.stopping && run.company && now >= 120) line += `<br><span class="sv-warn">${escH(run.company)} isn't answering. Wait, or stop the survey; what's been read is kept.</span>`;
     else if (!run.stopping && run.company && now >= 45) line += `<br><span class="sv-muted">${escH(run.company)} is a slow page; still reading.</span>`;
     $('sv-progress-label').innerHTML = line;
+    // New postings show as they're read: the list refreshes at most every 15 seconds.
+    if (run.added > (run.shown || 0) && !run.refreshing && Date.now() - (run.refreshedAt || 0) >= 15000) {
+      run.refreshing = true; run.shown = run.added; run.refreshedAt = Date.now();
+      loadJobs(true).finally(() => { if (run) run.refreshing = false; });
+    }
     $('sv-fill').style.width = run.total ? Math.round(Math.max(0, run.index - 1) / run.total * 100) + '%' : '0';
   }
   function beginRun(total = 0) {
@@ -431,19 +436,23 @@
   paintRegion();
 
   // ── Postings ─────────────────────────────────────────────────────────
-  async function loadJobs() {
+  // quiet: a refresh during a survey, without the Loading… flash.
+  async function loadJobs(quiet = false) {
     // Each company's best 10, so no one employer floods the list.
     const p = new URLSearchParams({ per_company_limit: '10' });
     if (state.profiles.size) p.set('profile_ids', [...state.profiles].join(','));
     if (state.where) p.set('location_type', state.where);
     if (state.region !== 'any') p.set('region', state.region);
-    loaded = false;
-    $('sv-count').textContent = '';
-    $('sv-list').innerHTML = '<p class="sv-empty">Loading…</p>';
+    if (!quiet) {
+      loaded = false;
+      $('sv-count').textContent = '';
+      $('sv-list').innerHTML = '<p class="sv-empty">Loading…</p>';
+    }
     try {
       jobs = (await (await fetch(`/api/jobs?${p}`)).json()).results;
       loaded = true; render();
     } catch (e) {
+      if (quiet) return;
       $('sv-list').innerHTML = `<p class="sv-empty sv-err">Couldn't load postings: ${escH(e.message)}</p>`;
     }
   }
