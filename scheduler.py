@@ -8,9 +8,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Company, Job, KeywordProfile, Setting
 from scraper import JobScraper
-import concurrent.futures as cf
-import multiprocessing as mp
-import survey_worker
+from page_reader import PageReader, Cancelled
 from synonyms import expand_keywords
 from profile_terms import facet_terms, has_term, WINDOW_DAYS
 
@@ -25,49 +23,6 @@ PER_COMPANY_CAP = 25
 # The longest one company's read may take. A big Workday board, read 15 pages
 # deep, takes about 40 seconds; a careers page that hands off to a board, a little more.
 COMPANY_DEADLINE = 120
-
-
-class _Cancelled(Exception):
-    pass
-
-
-class _Reader:
-    """Career pages read in one child process, so a stalled read can be killed:
-    at the company deadline, or at once when Stop is pressed."""
-
-    def __init__(self):
-        self.pool = None
-
-    def read(self, url: str):
-        if self.pool is None:
-            self.pool = cf.ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context("spawn"))
-        future = self.pool.submit(survey_worker.read, url)
-        started = time.time()
-        while True:
-            try:
-                return future.result(timeout=1)
-            except cf.TimeoutError:
-                if CANCEL.is_set():
-                    self.kill()
-                    raise _Cancelled()
-                if time.time() - started > COMPANY_DEADLINE:
-                    self.kill()
-                    raise TimeoutError(f"The career page timed out after {COMPANY_DEADLINE} seconds")
-
-    def kill(self):
-        if self.pool is not None:
-            for proc in list((self.pool._processes or {}).values()):
-                proc.kill()
-            self.pool.shutdown(wait=False, cancel_futures=True)
-            self.pool = None
-
-    def close(self):
-        if self.pool is not None:
-            try:
-                self.pool.submit(survey_worker.close).result(timeout=15)
-            except Exception:
-                pass
-            self.kill()
 
 
 def _matches_keywords(title: str, keywords_lower: List[str]) -> bool:
@@ -220,9 +175,9 @@ def iter_scrape(claimed: bool = False) -> Generator[dict, None, None]:
     STATE.clear()
     STATE.update(running=True, index=0, total=0, company=None, started=time.time(), company_started=None, found=0, added=0, errors=0)
     db: Session = SessionLocal()
-    # Pages are read in a child process (survey_worker); this scraper only parses dates and places.
+    # Pages are read in a child process (page_reader); this scraper only parses dates and places.
     scraper = JobScraper(rate_limit_seconds=0.4, max_pages=15, page_timeout_ms=30000)
-    reader = _Reader()
+    reader = PageReader("survey", COMPANY_DEADLINE, cancel=CANCEL)
 
     try:
         exclude_terms = _get_exclude_terms(db)
@@ -284,7 +239,7 @@ def iter_scrape(claimed: bool = False) -> Generator[dict, None, None]:
                        "company": company.name, "found": len(scraped_jobs),
                        "added": added, "timed_out": False, "error": None}
 
-            except _Cancelled:
+            except Cancelled:
                 stopped = True
                 break
             except Exception as e:

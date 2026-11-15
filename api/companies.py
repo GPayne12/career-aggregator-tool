@@ -14,6 +14,12 @@ from database import get_db, SessionLocal
 from models import Company, Discovery, Job, KeywordProfile
 from profile_terms import facet_terms, has_term, is_engineering
 from scraper import JobScraper
+from page_reader import PageReader
+
+# Landscape's Check reads in its own child process (not the survey's), so a stalled
+# page can't hang the server: a minute at most, and the child closes after 5 idle minutes.
+CHECK_DEADLINE = 60
+_check_reader = PageReader("check", CHECK_DEADLINE, idle=300)
 from discover import board_jobs, boards_on_page, company_key
 from api.discovery import run_many
 
@@ -342,16 +348,14 @@ def check_company(company_id: int, body: CheckBody, db: Session = Depends(get_db
     url = (body.career_url or c.career_url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="No career page to check")
-    scraper = JobScraper(rate_limit_seconds=0.3, max_pages=2, page_timeout_ms=25000)
+    scraper = JobScraper()   # names the platform; the page is read by _check_reader
     t0 = time.time()
     error = None
     jobs: List[Dict] = []
     try:
-        jobs = scraper.scrape_career_page(url)
+        jobs, _ = _check_reader.read(url)
     except Exception as e:
         error = str(e)[:200]
-    finally:
-        scraper.close()
     platform = scraper.detect_platform(url)
     board_url = url if platform != "generic" else None
     # A careers page that hands off to a job board: name the board, so George
