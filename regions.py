@@ -11,6 +11,7 @@ A posting with several places counts if any of them qualifies. One whose place
 can't be read ("2 Locations", "N/A", "Remote") is kept: it may well qualify.
 """
 import re
+from functools import lru_cache
 from typing import Optional
 
 US_STATES = {
@@ -123,6 +124,7 @@ def in_corridor(loc: Optional[str], location_type: Optional[str] = None) -> bool
     return False
 
 
+@lru_cache(maxsize=8192)   # the same location strings come round on every Survey load
 def keep(loc: Optional[str], region: Optional[str], location_type: Optional[str] = None) -> bool:
     if region == "na":
         return in_north_america(loc)

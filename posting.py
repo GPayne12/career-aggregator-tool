@@ -50,6 +50,19 @@ def _from_html(html: str) -> Optional[str]:
     return text if len(text) >= MIN_CHARS else None
 
 
+def quick_text(url: str, timeout: int = 15) -> Optional[str]:
+    """One plain request, no browser: what the survey uses to read a description.
+    (A browser inside the server can stall; the survey never starts one here.)"""
+    if not url:
+        return None
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
+        return _from_html(resp.text) if resp.ok else None
+    except requests.RequestException as e:
+        logger.info("description fetch failed for %s: %s", url, e)
+        return None
+
+
 def fetch_posting_text(url: str) -> Tuple[Optional[str], str]:
     """Returns (text, state): state is 'ready' or 'failed'."""
     if not url:

@@ -6,7 +6,8 @@ survey and Landscape's Check never drive a browser in the server itself: each
 has a PageReader, a child process it can kill when a read runs past its
 deadline or the survey is stopped.
 
-    survey   15 pages deep (300 postings, newest first), 30 seconds a page
+    survey   15 pages deep (300 postings, newest first), 30 seconds a page; a Workday
+             board stops sooner, at the first page older than the 7-day window
     check    the first 2 pages, 25 seconds a page: answers in seconds
 """
 import concurrent.futures as cf
@@ -18,7 +19,8 @@ from typing import Dict, List, Optional, Tuple
 # ── In the child process ─────────────────────────────────────────────────────
 
 _SETTINGS = {
-    "survey": dict(rate_limit_seconds=0.4, max_pages=15, page_timeout_ms=30000),
+    # window_days: a Workday board stops at the first page older than Survey's window.
+    "survey": dict(rate_limit_seconds=0.4, max_pages=15, page_timeout_ms=30000, window_days=7),
     "check": dict(rate_limit_seconds=0.3, max_pages=2, page_timeout_ms=25000),
 }
 _scraper = None

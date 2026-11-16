@@ -110,8 +110,11 @@ GENERIC_SELECTORS = [
 
 class JobScraper:
     def __init__(self, rate_limit_seconds: float = 1.5, max_pages: Optional[int] = None,
-                 page_timeout_ms: int = 60000):
+                 page_timeout_ms: int = 60000, window_days: Optional[int] = None):
         self.rate_limit_seconds = rate_limit_seconds
+        # The survey keeps only postings from the last window_days. A Workday board lists
+        # newest first, so once a whole page is older than that, the rest is too.
+        self.window_days = window_days
         # A Check (a trial scrape George runs to judge a career page) reads only
         # the first pages, and gives a slow page less time.
         self.max_pages = max_pages
@@ -261,6 +264,16 @@ class JobScraper:
                 # Workday can hand back the same page again; stop when a page brings nothing new.
                 if len(postings) < limit or new_on_page == 0:
                     break
+                # Past the survey's window: every posting on this page is dated, and older.
+                # (A posting with no readable date never counts as old.) What wasn't read
+                # isn't closed: the 7-day prune retires it instead.
+                if self.window_days:
+                    cutoff = datetime.utcnow() - timedelta(days=self.window_days)
+                    dates = [self.process_posted_date(p.get('postedOn', '')) for p in postings]
+                    if dates and all(d is not None and d < cutoff for d in dates):
+                        self.truncated = True
+                        logger.info(f"Workday: past the {self.window_days}-day window after {pages} pages for {url}")
+                        break
                 offset += limit
 
             except Exception as e:

@@ -3,14 +3,16 @@ import logging
 import threading
 import time
 from datetime import datetime, timedelta
-from typing import Generator, List
+from typing import Generator, List, Optional
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Company, Job, KeywordProfile, Setting
 from scraper import JobScraper
 from page_reader import PageReader, Cancelled
 from synonyms import expand_keywords
-from profile_terms import facet_terms, has_term, WINDOW_DAYS
+from profile_terms import facet_terms, has_term, WINDOW_DAYS, want_tracks, worth_reading
+from posting import quick_text
+from synonyms import SYNONYMS
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,32 @@ PER_COMPANY_CAP = 25
 # The longest one company's read may take. A big Workday board, read 15 pages
 # deep, takes about 40 seconds; a careers page that hands off to a board, a little more.
 COMPANY_DEADLINE = 120
+
+
+# Descriptions read per company in one survey, at most, and the time they may take.
+DESCRIBE_MAX = 20
+DESCRIBE_SECONDS = 60
+
+
+def read_descriptions(db: Session, company_id: Optional[int], want_terms: List[str], exclude_terms: List[str]) -> int:
+    """Read the descriptions Survey needs: postings in the window with a title that could
+    put them in Survey and no description yet. One plain request each; stops on Stop."""
+    cutoff = datetime.utcnow() - timedelta(days=WINDOW_DAYS)
+    q = db.query(Job).filter(Job.is_active == True, (Job.description == None) | (Job.description == ""))
+    if company_id is not None:
+        q = q.filter(Job.company_id == company_id)
+    todo = [j for j in q.all() if (j.posted_date or j.fetched_at) >= cutoff and worth_reading(j.title, want_terms, exclude_terms)]
+    started, read = time.time(), 0
+    for job in todo[:DESCRIBE_MAX] if company_id is not None else todo:
+        if CANCEL.is_set() or (company_id is not None and time.time() - started > DESCRIBE_SECONDS):
+            break
+        text = quick_text(job.url)
+        if text:
+            job.description = text
+            read += 1
+        time.sleep(0.2)
+    db.commit()
+    return read
 
 
 def _matches_keywords(title: str, keywords_lower: List[str]) -> bool:
@@ -184,6 +212,8 @@ def iter_scrape(claimed: bool = False) -> Generator[dict, None, None]:
 
         raw_keywords = facet_terms(db, "want")
         keywords_lower = [kw.lower() for kw in expand_keywords(raw_keywords)] if raw_keywords else []
+        # Survey's own title terms, for deciding whose description to read.
+        want_terms = [t for _, ks in want_tracks(db) for k in ks for t in [k] + SYNONYMS.get(k.lower(), [])]
 
         # Only career pages George has verified are scraped; the rest wait in
         # Companies until he checks them.
@@ -232,6 +262,7 @@ def iter_scrape(claimed: bool = False) -> Generator[dict, None, None]:
                             job.is_active = False
                             closed_total += 1
                 db.commit()
+                STATE["described"] = STATE.get("described", 0) + read_descriptions(db, company.id, want_terms, exclude_terms)
                 total_added += added
                 STATE["found"] += len(scraped_jobs); STATE["added"] += added
                 logger.info(f"Scraped {company.name}: {len(scraped_jobs)} found, {added} new")

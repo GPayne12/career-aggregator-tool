@@ -35,8 +35,22 @@ def _word(term: str):
     return re.compile(r"(?<![a-z0-9])" + re.escape(term.lower().strip()) + r"(?![a-z0-9])")
 
 
+# A posting's text, lowercased once and remembered: Survey asks ~90 questions of each
+# description, and lowercasing it every time was most of a 4-second page load.
+@lru_cache(maxsize=2048)
+def _lower(text: str) -> str:
+    return text.lower()
+
+
 def has_term(text: Optional[str], term: str) -> bool:
-    return bool(text) and bool(term.strip()) and _word(term).search(text.lower()) is not None
+    if not text:
+        return False
+    t = term.lower().strip()
+    if not t:
+        return False
+    low = _lower(text)
+    # A plain substring check first: most terms aren't there at all.
+    return t in low and _word(t).search(low) is not None
 
 
 def want_tracks(db: Session) -> List[tuple]:
@@ -198,3 +212,18 @@ def bridge_role(title, description):
     if DESIGN_TITLE.search(title) and description and (AI_WORD.search(description) or LEARN_WORD.search(description)):
         return "learning", DESIGN_TITLE.search(title).group(0).lower()
     return None
+
+
+# ── Worth reading ───────────────────────────────────────────────────────────
+# Workday and most careers pages list titles only. A posting whose title could put
+# it in Survey has its description read (one plain web request), so it's scored on
+# what the job is, not only on its title.
+def worth_reading(title: Optional[str], want_terms: List[str], exclude_terms: List[str]) -> bool:
+    if not title or is_engineering(title) or NOT_ADJACENT.search(title) or sales_only(title):
+        return False
+    if any(has_term(title, t) for t in exclude_terms):
+        return False
+    if any(has_term(title, t) for t in want_terms):
+        return True
+    return bool(adjacent_title(title) or LIGHT.search(title) or CX_TITLE.search(title) or AI_WORD.search(title)
+                or WORKFORCE_TITLE.search(title) or DESIGN_TITLE.search(title))
