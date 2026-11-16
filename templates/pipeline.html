@@ -653,6 +653,15 @@
   window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (view === 'field') draw(); }, 150); });
   // Pulses fade on their own; redraw once a minute so ages and quiet states stay true.
   setInterval(() => { if (view === 'field' && !document.hidden) draw(); }, 60000);
-  load();
+  // Opened at an application (?item=id, from Render's Applications): the field, its dot
+  // selected and pulsing, and the drawer out with its details.
+  load().then(() => {
+    const id = Number(new URLSearchParams(location.search).get('item'));
+    if (!id || !byId[id]) return;
+    if (view !== 'field') document.querySelector('[data-view="field"]')?.click();
+    pulseUntil.set(id, Date.now() + 8000);
+    render();
+    select(id);
+  });
 </script>
 {% endblock %}

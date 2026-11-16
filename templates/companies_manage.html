@@ -118,6 +118,7 @@
   .co-table td { vertical-align:top; padding:12px 8px !important; border:0 !important; border-bottom:1px solid var(--hair) !important; font-size:15px; overflow:hidden; }
   .co-table tr:hover > td { background:rgba(240,237,231,.45); }
   .co-table tr.is-skipped > td { opacity:.5; }
+  .co-table tr.is-target > td { background:rgba(45,106,79,.08) !important; }
   .sortable { cursor:pointer; user-select:none; }
   .sort-ind { color:#bdb7ac; margin-left:2px; }
   th.col-score, td.col-score { text-align:center; padding-left:2px !important; padding-right:2px !important; }
@@ -241,7 +242,26 @@
       companiesList = list;
       list.forEach(c => { companiesData[c.id] = c; });
       renderAll();
+      showTarget();
     });
+  }
+
+  // Opened at a company (?company=id, from Render's Applications): its row, under the
+  // filter that holds it, scrolled into view and marked.
+  let target = Number(new URLSearchParams(location.search).get('company')) || null;
+  function showTarget() {
+    if (!target) return;
+    const c = companiesData[target];
+    if (!c) { target = null; return; }
+    const holds = FILTERS.find(f => f[0] !== 'all' && f[2](c));
+    if (holds && holds[0] !== filter) { filter = holds[0]; renderFilters(); renderTable(); }
+    const row = document.getElementById(`row-${target}`);
+    if (row) {
+      row.classList.add('is-target');
+      row.scrollIntoView({ block: 'center' });
+      row.classList.remove('co-flash'); void row.offsetWidth; row.classList.add('co-flash');
+    }
+    target = null;
   }
 
   function renderAll() {
