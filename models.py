@@ -139,8 +139,8 @@ class Job(Base):
 
 
 class Removal(Base):
-    """A posting removed from Survey, and why: it never comes back, and the reason
-    teaches Survey's scoring (see feedback.py)."""
+    """A posting removed from Survey: it never comes back. Removing asks no question
+    and teaches nothing; Survey learns from chewed postings instead (see chew.py)."""
     __tablename__ = "removals"
 
     id = Column(Integer, primary_key=True)
@@ -148,8 +148,30 @@ class Removal(Base):
     company_id = Column(Integer, nullable=True)
     title = Column(String(500), nullable=True)
     url = Column(String(500), nullable=True)
-    reason = Column(String(30), nullable=False)        # role, responsibilities, salary
+    reason = Column(String(30), nullable=False)        # "removed" (earlier rows: role, responsibilities, experience)
     learned_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Chew(Base):
+    """A posting chewed in Survey: the right field, not a target. It leaves the list
+    for good and is never pursued; its text and what Survey said about it are kept,
+    and the pile widens what Survey looks for (see chew.py)."""
+    __tablename__ = "chews"
+
+    id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, nullable=True)
+    company_id = Column(Integer, nullable=True)
+    title = Column(String(500), nullable=True)
+    url = Column(String(500), nullable=True)
+    location = Column(String(255), nullable=True)
+    location_type = Column(String(50), nullable=True)
+    posted_date = Column(DateTime, nullable=True)
+    description = Column(Text, nullable=True)          # the full text, copied
+    source = Column(String(20), default="survey")
+    # What Survey said when it was chewed: score, track, via, matched, rank, of,
+    # days_old, region, previewed.
+    context_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

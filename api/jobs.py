@@ -7,8 +7,10 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
 from database import get_db
-from models import Job, Company, KeywordProfile, PipelineJob, Setting, Removal
-from feedback import Lessons, REASONS, record
+from models import Job, Company, KeywordProfile, PipelineJob, Setting, Removal, Chew
+from feedback import Lessons, role_key
+from chew import Chewed
+from chew_store import field_terms, load_sets, build_taste, taste_on
 from profile_terms import (facet_terms, has_term, is_engineering, WINDOW_DAYS, ADJACENT, NOT_ADJACENT,
                            adjacent_title, craft_in, sales_only, CORE_TITLE, LIGHT, light_role, bridge_role)
 from regions import keep as keep_region
@@ -32,6 +34,8 @@ class JobResponse(BaseModel):
     matched_keywords: List[str] = []
     # Which track its title matched (engineering / learning), and where it is in the pipeline.
     track: Optional[str] = None
+    # The route that let it into Survey: title, adjacent, light, bridge, text or field.
+    via: Optional[str] = None
     pipeline_status: Optional[str] = None
     applied_date: Optional[str] = None
 
@@ -71,12 +75,24 @@ def _score(title: str, keywords: List[str], description: Optional[str] = None) -
     return pct, matched
 
 
+def _distinct(terms: List[str]) -> List[str]:
+    """One entry per idea: "Instructional Design" and "instructional design" are one,
+    and a term inside a longer matched term ("instructional") isn't counted again."""
+    seen, out = set(), []
+    for t in terms:
+        if t.lower() not in seen:
+            seen.add(t.lower())
+            out.append(t)
+    return [t for t in out if not any(o.lower() != t.lower() and has_term(o, t) for o in out)]
+
+
 def _fit(job, via: Optional[str], title_terms: List[str], can: List[str], want: List[str]) -> tuple:
     """How well a posting fits, 0–100, and why. Honest rather than flattering:
       title,   up to 50: a core learning-design title 50; another of your role terms 35;
                          an engineering-light, customer-experience, AI-hybrid,
                          workforce or design role 25;
-                         a learning-adjacent title word 20; in by its description only 10
+                         a learning-adjacent title word 20; in by its description only
+                         (craft, or the field's language learned from chewed postings) 10
       details, up to 50: 5 for each detail from your profile the description names
                          (craft, your skills, your role terms), up to 10 of them.
     A posting with no description to read can't score high: there's little to go on."""
@@ -87,10 +103,10 @@ def _fit(job, via: Optional[str], title_terms: List[str], can: List[str], want: 
     elif via in ("light", "bridge"):
         title_part = 25
     else:
-        title_part = 10 if via == "text" else 0
+        title_part = 10 if via in ("text", "field") else 0
     desc = job.description or ""
-    details = list(dict.fromkeys(craft_in(desc) + [k for k in can if has_term(desc, k)] + [k for k in want if has_term(desc, k)]))
-    return min(100, title_part + min(50, 5 * len(details))), list(dict.fromkeys(title_terms + details))[:8]
+    details = _distinct(craft_in(desc) + [k for k in can if has_term(desc, k)] + [k for k in want if has_term(desc, k)])
+    return min(100, title_part + min(50, 5 * len(details))), _distinct(title_terms + details)[:8]
 
 
 def _profile_score(job, want: List[str], can: List[str]) -> tuple:
@@ -164,6 +180,13 @@ def search_jobs(
     all_rows = base_query.order_by(Job.posted_date.desc()).all()
     pipeline = {pj.job_id: pj for pj in db.query(PipelineJob).filter(PipelineJob.job_id != None).all()}
     lessons = Lessons(db.query(Removal).all())
+    chewed = Chewed(db.query(Chew).all())
+    # What chewed postings taught: the field's language George accepted (it counts as
+    # detail, and two of its phrases in a description let a posting in), and taste.
+    field = field_terms(db)
+    if selected_ids:
+        can_keywords = can_keywords + [t for t in field if t.lower() not in {k.lower() for k in can_keywords}]
+    taste = build_taste(load_sets(db)) if selected_ids and taste_on(db) else None
 
     def title_hits(title: str, keywords: List[str]) -> int:
         # Weighted by length: "AI enablement" beats "enablement" when both tracks match.
@@ -179,6 +202,8 @@ def search_jobs(
             continue
         if lessons.removed(job):
             continue          # removed from Survey: it doesn't come back
+        if chewed.has(job):
+            continue          # chewed: kept as data, off the list for good
         track, via, title_terms = None, None, []
         if want_facets and is_engineering(job.title):
             continue          # engineering titles count for neither track
@@ -202,16 +227,23 @@ def search_jobs(
                 track, via, title_terms = bridge[0], "bridge", [bridge[1]]
             elif craft_in(job.description) and not sales_only(job.title):
                 track, via = "learning", "text"
+            elif field and not sales_only(job.title) and sum(1 for t in field if has_term(job.description, t)) >= 2:
+                # Two phrases of the field's language, learned from chewed postings.
+                track, via = "learning", "field"
             else:
                 continue
         elif can_keywords and not any(has_term(f"{job.title} {job.description or ''}", k) for k in can_keywords):
             continue
         days_old = (datetime.utcnow() - job.posted_date).days if job.posted_date else 0
         score, matched = _fit(job, via, title_terms, can_keywords, want_keywords)
-        if selected_ids:
-            off, why = lessons.penalty(job)
-            if off:
-                score, matched = max(0, score - off), (matched + why)
+        if taste is not None:
+            # Taste only lifts: a posting like the ones pursued, and unlike the ones chewed.
+            up, why = taste.adjust(job.title, job.description, job.location_type)
+            if up:
+                score, matched = min(100, score + up), (matched + why)
+        n_chewed = chewed.roles.get(role_key(job.title), 0)
+        if n_chewed:
+            matched = matched + [f"a role you chewed{f' ×{n_chewed}' if n_chewed > 1 else ''}"]
         pj = pipeline.get(job.id)
         results.append(JobResponse(
             job_id=job.id,
@@ -227,6 +259,7 @@ def search_jobs(
             relevance_score=score,
             matched_keywords=matched,
             track=track,
+            via=via,
             pipeline_status=pj.status if pj else None,
             applied_date=pj.applied_date.isoformat() if pj and pj.applied_date else None,
         ))
@@ -246,22 +279,27 @@ def search_jobs(
     return JobsListResponse(profile=profile_label, total=len(results), results=results)
 
 
-class RemoveBody(BaseModel):
-    reason: str
-
-
 @router.post("/{job_id}/remove")
-def remove_job(job_id: int, body: RemoveBody, db: Session = Depends(get_db)):
-    """Remove a posting from Survey, with why: role, responsibilities or salary."""
-    if body.reason not in REASONS:
-        raise HTTPException(status_code=400, detail=f"reason must be one of {', '.join(REASONS)}")
+def remove_job(job_id: int, db: Session = Depends(get_db)):
+    """Remove a posting from Survey for good. One click, no question: what Survey
+    learns comes from chewed postings, not from removed ones."""
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    db.add(Removal(job_id=job.id, company_id=job.company_id, title=job.title, url=job.url,
-                   reason=body.reason, learned_json=json.dumps(record(job, body.reason))))
+    removal = Removal(job_id=job.id, company_id=job.company_id, title=job.title, url=job.url, reason="removed")
+    db.add(removal)
     db.commit()
-    return {"removed": job.id, "reason": body.reason}
+    return {"removed": job.id, "id": removal.id}
+
+
+@router.delete("/removals/{removal_id}", status_code=204)
+def undo_removal(removal_id: int, db: Session = Depends(get_db)):
+    """Undo a removal: the posting returns to Survey."""
+    removal = db.query(Removal).filter(Removal.id == removal_id).first()
+    if not removal:
+        raise HTTPException(status_code=404, detail="Removal not found")
+    db.delete(removal)
+    db.commit()
 
 
 @router.get("/{job_id}")

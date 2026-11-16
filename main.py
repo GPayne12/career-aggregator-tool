@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 import logging
 from contextlib import asynccontextmanager
 from database import init_db
-from api import companies, discovery, profiles, jobs, pipeline, scrape, settings
+from api import companies, discovery, profiles, jobs, pipeline, scrape, settings, chews
 
 # Set up logging
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -37,6 +37,7 @@ templates = Jinja2Templates(directory="templates")
 app.include_router(companies.router)
 app.include_router(discovery.router)
 app.include_router(profiles.router)
+app.include_router(chews.router)   # before jobs: /api/chews is its own prefix
 app.include_router(jobs.router)
 app.include_router(pipeline.router)
 app.include_router(scrape.router)

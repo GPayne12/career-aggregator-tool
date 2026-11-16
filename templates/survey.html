@@ -22,6 +22,7 @@
   <label class="bar3-find"><span class="sr">Find a title or company</span>
     <input id="sv-find" type="search" placeholder="Find a title or company" autocomplete="off"></label>
   <button type="button" class="bar3-item" id="sv-refine-toggle" aria-expanded="false" aria-controls="sv-refine">Refine<span class="bar3-dot" id="sv-refine-dot" hidden></span></button>
+  <button type="button" class="bar3-item" id="sv-chewed-toggle" aria-expanded="false" aria-controls="sv-chewp" title="The postings you chewed, and what they suggest">Chewed<span id="sv-chewed-n"></span></button>
   <button type="button" class="bar3-item" id="sv-export" title="Download the postings shown, as a spreadsheet">Export</button>
 </nav>
 <section class="sv-refine" id="sv-refine" hidden aria-label="Refine">
@@ -64,12 +65,14 @@
   </div>
 
   <p class="sv-count" id="sv-count"></p>
+  <p class="sv-count sv-undo" id="sv-undo" hidden></p>
   <div id="sv-list"></div>
 </div>
 <aside class="sv-over" id="sv-over" aria-label="Posting" hidden></aside>
+<aside class="sv-over sv-chewp" id="sv-chewp" aria-label="Chewed" hidden></aside>
 
 <style>
-  .sv-page, .bar3, .sv-refine, .sv-over {
+  .sv-page, .bar3, .sv-refine, .sv-over, .sv-chewp {
     --ink:#1a1916; --ink2:#5c5a55; --ink3:#8a857c; --line:#d4cfc7; --hair:#e9e5dd; --paper:#fffefb; --bg:#faf9f7; --surface:#f0ede7;
     --ok:#2d6a4f; --warn:#b5642a; --miss:#b42318; --tang:#c47f00;
     --mono:'JetBrains Mono', ui-monospace, Menlo, monospace; --serif:'Source Serif 4', Georgia, serif; }
@@ -173,9 +176,34 @@
   html body .sv-go:hover { background:var(--surface); }
   .sv-done { font:600 12px var(--mono); color:#1f8a5a; white-space:nowrap; }
   .sv-acts { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
-  html body .sv-rm, html body .sv-why { all:unset; cursor:pointer; font:500 12px var(--mono) !important; color:var(--ink3) !important; padding:4px 8px; border-radius:6px; margin:-1px 0 0 -8px; white-space:nowrap; }
-  html body .sv-why { color:var(--ink) !important; }
-  html body .sv-rm:hover, html body .sv-why:hover { background:var(--surface); }
+  /* Chew and Remove: two icons side by side, no words. Their names are in aria-label and the tooltip. */
+  .sv-pair { display:flex; gap:2px; margin-left:-6px; }
+  html body .sv-ico { all:unset; box-sizing:border-box; cursor:pointer; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center;
+                      border-radius:6px; color:var(--ink3) !important; }
+  html body .sv-ico svg { width:16px; height:16px; display:block; pointer-events:none; }
+  html body .sv-ico:hover { background:var(--surface); color:var(--ink) !important; }
+  html body .sv-ico[data-chew]:hover, html body .sv-ico[data-chew-over]:hover { color:var(--ok) !important; }
+  html body .sv-ico[data-remove]:hover, html body .sv-ico[data-remove-over]:hover { color:var(--miss) !important; }
+  html body .sv-ico:focus-visible, html body .sv-link:focus-visible { outline:2px solid var(--ok); outline-offset:1px; }
+  html body .sv-over-acts .sv-ico { width:34px; height:34px; border:1px solid var(--line); border-radius:999px; }
+  html body .sv-link { all:unset; cursor:pointer; font:500 12px var(--mono) !important; color:var(--ok) !important; padding:2px 4px; border-radius:4px; }
+  html body .sv-link:hover { background:var(--surface); }
+  .sv-page p.sv-undo { margin-top:4px; color:var(--ink2); }
+  .sv-undo[hidden] { display:none; }
+
+  /* Chewed: the list and what the pile suggests, in the same drawer as a posting's preview */
+  .sv-chewp h3 { font:600 15px/1.3 var(--serif) !important; margin:22px 0 4px; padding-top:14px; border-top:1px solid var(--line); color:var(--ink); }
+  .sv-chewp p.sv-cp-lede { margin:0 0 4px; font-size:15px; color:var(--ink2); }
+  .sv-chewp p.sv-cp-note { margin:0 0 8px; font-size:13px; color:var(--ink3); }
+  .sv-chewp ul { list-style:none; margin:0; padding:0; }
+  .sv-chewp li { padding:8px 0; border-bottom:1px solid var(--hair); }
+  .sv-chewp li b { font:600 15px var(--serif); color:var(--ink); }
+  .sv-chewp li a { font:600 15px var(--serif); color:var(--ink); text-decoration:none; }
+  .sv-chewp li a:hover { color:var(--ok); }
+  .sv-cp-meta { display:block; font:12px var(--mono); color:var(--ink3); margin-top:2px; }
+  .sv-cp-flag { display:block; font:12px var(--mono); color:var(--warn); margin-top:2px; }
+  .sv-cp-acts { display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
+
   .sv-table tr.is-open > td { background:rgba(45,106,79,.06) !important; }
   .sv-table col.c-act { width:12%; }
 
@@ -536,10 +564,10 @@
     if (pv) { pv.target = '_blank'; return; }
     const go = e.target.closest('[data-pursue]');
     if (go) return pursue(Number(go.dataset.pursue), go);
+    const ch = e.target.closest('[data-chew]');
+    if (ch) return chewJob(Number(ch.dataset.chew));
     const rm = e.target.closest('[data-remove]');
-    if (rm) { asking = Number(rm.dataset.remove); return render(); }
-    const why = e.target.closest('[data-why]');
-    if (why) return removeJob(Number(why.dataset.id), why.dataset.why);
+    if (rm) return removeJob(Number(rm.dataset.remove));
     const b = e.target.closest('.sv-save');
     if (!b || b.disabled) return;
     b.disabled = true; b.textContent = '…';
@@ -575,39 +603,166 @@
   function actsFor(j) {
     const done = doneLabel(j);
     if (done) return `<span class="sv-done" title="In the Pipeline">${done}</span>`;
-    if (asking === j.job_id) return whyHtml(j.job_id, 'sv-why');
     return `<button type="button" class="sv-go" data-pursue="${j.job_id}" title="${PURSUE_TIP}">${PURSUE_LABEL}</button>
         <button type="button" class="sv-save" data-id="${j.job_id}" ${j.is_saved ? 'disabled' : ''} title="Keep it in the pipeline for later">${j.is_saved ? 'In pipeline' : 'Save'}</button>
-        <button type="button" class="sv-rm" data-remove="${j.job_id}" title="Remove it from Survey for good, then say why">Remove</button>`;
+        ${pairHtml(j.job_id)}`;
   }
 
-  // ── Remove, with why ─────────────────────────────────────────────────
-  // Remove turns into the three reasons; one click on a reason removes the posting
-  // for good and teaches Survey (feedback.py). Esc or a click elsewhere keeps it.
-  const WHY = [['role', 'Role'], ['responsibilities', 'Responsibilities'], ['experience', 'Experience']];
-  let asking = null;
-  const whyHtml = (id, cls) => WHY.map(([v, l]) =>
-    `<button type="button" class="${cls}" data-why="${v}" data-id="${id}" title="Remove it: the ${l.toLowerCase()}${v === 'experience' ? ' level' : ''} isn't right">${l}</button>`).join('');
-  async function removeJob(id, reason) {
-    try {
-      const r = await fetch(`/api/jobs/${id}/remove`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
-      if (!r.ok) throw new Error(r.status);
-    } catch (err) { asking = null; render(); $('sv-count').textContent = `Couldn't remove it: ${err.message}`; return; }
-    asking = null;
+  // ── Chew and Remove ──────────────────────────────────────────────────
+  // Two icons, side by side, one click each, no question asked.
+  //   Chew:   the right field, not a target. Off the list for good, kept as data,
+  //           never pursued. The pile widens what Survey looks for (the Chewed drawer).
+  //   Remove: wrong. Off the list for good. It teaches nothing.
+  // Either can be undone for a few seconds.
+  const ICON_CHEW = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2a6 6 0 1 0 6 6H8z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+  const ICON_REMOVE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+  const CHEW_TIP = 'Chew: keep it as data and take it off the list';
+  const REMOVE_TIP = 'Remove it from Survey for good';
+  const pairHtml = (id, over = false) => `<span class="sv-pair">
+          <button type="button" class="sv-ico" data-chew${over ? '-over' : ''}="${id}" aria-label="${CHEW_TIP}" title="${CHEW_TIP}">${ICON_CHEW}</button>
+          <button type="button" class="sv-ico" data-remove${over ? '-over' : ''}="${id}" aria-label="${REMOVE_TIP}" title="${REMOVE_TIP}">${ICON_REMOVE}</button>
+        </span>`;
+
+  // Take a posting off the list after a verdict, and move the preview to the next one.
+  function dropRow(id) {
     const ids = [...document.querySelectorAll('.sv-table tr[data-row]')].map(tr => Number(tr.dataset.row));
-    const i = ids.indexOf(id), next = openId === id ? (ids[i + 1] ?? ids[i - 1]) : null;
-    const wasOpen = openId === id;
+    const i = ids.indexOf(id), wasOpen = openId === id, next = wasOpen ? (ids[i + 1] ?? ids[i - 1]) : null;
     jobs = jobs.filter(x => x.job_id !== id);
     render();
     if (wasOpen) next != null ? openPreview(next) : closePreview();
   }
+  let undoTimer = null;
+  function offerUndo(label, undo) {
+    const el = $('sv-undo');
+    clearTimeout(undoTimer);
+    el.hidden = false;
+    el.innerHTML = `${escH(label)} <button type="button" class="sv-link" id="sv-undo-btn">Undo</button>`;
+    $('sv-undo-btn').addEventListener('click', async () => {
+      clearTimeout(undoTimer); el.hidden = true;
+      try { await undo(); } catch { /* the reload below shows where things stand */ }
+      loadJobs(true); loadChewCount();
+    });
+    undoTimer = setTimeout(() => { el.hidden = true; }, 8000);
+  }
+  const send = (url, method, body) => fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+
+  async function chewJob(id) {
+    const j = jobs.find(x => x.job_id === id); if (!j) return;
+    const shown = [...document.querySelectorAll('.sv-table tr[data-row]')].map(tr => Number(tr.dataset.row));
+    // What Survey said about it at the time: it can't be worked out later.
+    const context = { score: j.relevance_score, track: j.track, via: j.via, matched: j.matched_keywords, rank: shown.indexOf(id) + 1,
+                      of: shown.length, days_old: j.days_old, region: state.region, previewed: openId === id };
+    let made;
+    try {
+      const r = await send('/api/chews', 'POST', { job_id: id, context });
+      if (!r.ok) throw new Error(r.status);
+      made = await r.json();
+    } catch (err) { $('sv-count').textContent = `Couldn't chew it: ${err.message}`; return; }
+    dropRow(id);
+    chewN++; paintChewN();
+    offerUndo(`Chewed: ${j.title}.`, () => send(`/api/chews/${made.id}`, 'DELETE'));
+  }
+  async function removeJob(id) {
+    const j = jobs.find(x => x.job_id === id); if (!j) return;
+    let made;
+    try {
+      const r = await send(`/api/jobs/${id}/remove`, 'POST');
+      if (!r.ok) throw new Error(r.status);
+      made = await r.json();
+    } catch (err) { $('sv-count').textContent = `Couldn't remove it: ${err.message}`; return; }
+    dropRow(id);
+    offerUndo(`Removed: ${j.title}.`, () => send(`/api/jobs/removals/${made.id}`, 'DELETE'));
+  }
+
+  // ── Chewed: the list, and what the pile suggests ─────────────────────
+  // Every chewed posting lives here. None is pursued further: together they widen
+  // what Survey looks for. A suggestion you add changes what Survey lets in; what
+  // you then do with those postings shows here, under "Added", so a word that
+  // brings in the wrong work can be taken back out.
+  let chewN = 0;
+  const paintChewN = () => { $('sv-chewed-n').textContent = chewN ? ` ${chewN}` : ''; };
+  async function loadChewCount() {
+    try { const l = await (await fetch('/api/chews')).json(); chewN = l.length; paintChewN(); return l; } catch { return []; }
+  }
+  const TRACK = { learning: 'Learning design', ai: 'AI enablement' };
+  const round = g => g > 1 ? ` · round ${g}` : '';
+  function chewedHtml(list, d) {
+    const head = `<button type="button" class="sv-over-close" data-close>Close ×</button>
+      <h2>Chewed</h2>
+      <p class="sv-cp-lede">Postings from the right field that aren't targets. They stay off the list and are never pursued. What they share widens what Survey looks for.</p>`;
+    if (!d) return head + `<p class="sv-over-none">Couldn't read the pile.</p>`;
+    const c = d.counts;
+    const counts = `<p class="sv-over-meta">${plural(c.chewed, 'chewed', 'chewed')} · ${plural(c.targets, 'target', 'targets')} in the Pipeline · ${c.removed} removed</p>`;
+    const titles = d.titles.length ? `<ul>${d.titles.map(t => `<li><b>${escH(t.term)}</b>
+        <span class="sv-cp-meta">in ${plural(t.support, 'kept title', 'kept titles')} · ${plural(t.in_window, 'title', 'titles')} this week · ${t.all_time} all time${t.removed ? ` · ${t.removed} removed` : ''}${round(t.gen)}</span>
+        <span class="sv-cp-acts"><button type="button" class="sv-link" data-accept="${escH(t.term)}" data-kind="title" data-track="${t.track}">Add to ${TRACK[t.track] || 'Learning design'}</button>
+          <button type="button" class="sv-link" data-accept="${escH(t.term)}" data-kind="title" data-track="${t.track === 'ai' ? 'learning' : 'ai'}">Add to ${TRACK[t.track === 'ai' ? 'learning' : 'ai']}</button>
+          <button type="button" class="sv-link" data-dismiss="${escH(t.term)}">Not this</button></span></li>`).join('')}</ul>`
+      : `<p class="sv-cp-note">Nothing to suggest yet. A role word appears when kept titles use it and your Profile doesn't search for it.</p>`;
+    const L = d.language;
+    const language = !L.ready ? `<p class="sv-cp-note">Needs ${L.need} kept postings with their text. There are ${L.have}.</p>`
+      : L.terms.length ? `<ul>${L.terms.map(t => `<li><b>${escH(t.term)}</b>
+        <span class="sv-cp-meta">in ${t.kept} of ${t.of} kept postings · ${t.everywhere} of the ${L.read} read${round(t.gen)}</span>
+        <span class="sv-cp-acts"><button type="button" class="sv-link" data-accept="${escH(t.term)}" data-kind="language">Add as a skill</button>
+          <button type="button" class="sv-link" data-dismiss="${escH(t.term)}">Not this</button></span></li>`).join('')}</ul>`
+      : `<p class="sv-cp-note">Nothing stands out yet across ${L.have} kept postings.</p>`;
+    const added = d.accepted.length ? `<ul>${d.accepted.map(a => `<li><b>${escH(a.term)}</b>
+        <span class="sv-cp-meta">${a.kind === 'title' ? `searched in titles, ${TRACK[a.track] || ''}` : 'a skill, read in descriptions'}${round(a.gen)} · reached ${plural(a.reached, 'new posting', 'new postings')}${a.reached ? `: ${a.pursued} pursued or saved, ${a.chewed} chewed, ${a.removed} removed, ${a.waiting} waiting` : ''}</span>
+        ${a.retire ? '<span class="sv-cp-flag">Removed more often than kept. It may not be earning its place.</span>' : ''}
+        ${a.far ? '<span class="sv-cp-flag">Several rounds away from your own Profile. Check it still describes work you want.</span>' : ''}
+        <span class="sv-cp-acts"><button type="button" class="sv-link" data-retire="${escH(a.term)}">Take it back out</button></span></li>`).join('')}</ul>`
+      : `<p class="sv-cp-note">Nothing added yet. What you add shows here with the postings it has reached since, and what you did with them.</p>`;
+    const T = d.taste;
+    const taste = !T.ready
+      ? `<p class="sv-cp-note">Taste compares what you pursued with what you chewed, and lifts postings like the first. It needs ${T.need.targets} targets and ${T.need.others} chewed or removed. There are ${T.have.targets} and ${T.have.others}.</p>`
+      : `<p class="sv-cp-note">${T.on ? 'On: postings like the ones you pursued are lifted by up to 15 points, and say so.' : 'Ready, and off. On, it lifts postings like the ones you pursued by up to 15 points. It never lowers one.'} Leaning on: ${T.lifts.map(l => escH(l.feature.replace(/^\w+:/, ''))).join(', ') || 'nothing yet'}.</p>
+         <span class="sv-cp-acts"><button type="button" class="sv-link" data-taste="${T.on ? 'off' : 'on'}">${T.on ? 'Switch taste off' : 'Switch taste on'}</button></span>`;
+    const S = d.sources;
+    const sources = `${S.kept_from.length ? `<p class="sv-cp-note">You keep most from: ${S.kept_from.map(x => `${escH(x.company)} (${x.kept})`).join(', ')}.</p>` : ''}
+      ${S.never_worth_reading.length ? `<p class="sv-cp-note">Read at length, with never a title worth reading: ${S.never_worth_reading.map(x => `${escH(x.company)} (${x.read} postings)`).join(', ')}. Pausing these in Landscape shortens a survey.</p>` : ''}`;
+    const when = iso => iso ? new Date(iso.endsWith('Z') ? iso : iso + 'Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+    const items = list.length ? `<ul>${list.map(x => `<li><a href="${escH(x.url)}" target="_blank" rel="noopener">${escH(x.title)}</a>
+        <span class="sv-cp-meta">${escH(x.company || '')} · chewed ${when(x.chewed_at)}${x.context.score != null ? ` · ${x.context.score}% then` : ''}${x.context.rank ? `, ${x.context.rank} of ${x.context.of}` : ''}${x.has_text ? '' : ' · title only'}</span></li>`).join('')}</ul>`
+      : `<p class="sv-cp-note">Nothing chewed yet. The half-circle beside a posting chews it.</p>`;
+    return `${head}${counts}
+      <h3>Role words to search for</h3>${titles}
+      <h3>The field's language</h3>${language}
+      <h3>Added, and what it reached</h3>${added}
+      <h3>Taste</h3>${taste}
+      ${sources.trim() ? `<h3>Companies</h3>${sources}` : ''}
+      <h3>Every chewed posting</h3>${items}`;
+  }
+  async function openChewed() {
+    closePreview();
+    const p = $('sv-chewp');
+    p.hidden = false; $('sv-chewed-toggle').setAttribute('aria-expanded', 'true');
+    if (!p.innerHTML) p.innerHTML = `<button type="button" class="sv-over-close" data-close>Close ×</button><h2>Chewed</h2><p class="sv-over-none">Reading the pile…</p>`;
+    const [list, d] = await Promise.all([loadChewCount(), fetch('/api/chews/digest').then(r => r.json()).catch(() => null)]);
+    const top = p.scrollTop;
+    p.innerHTML = chewedHtml(list, d);
+    p.scrollTop = top;
+  }
+  function closeChewed() { $('sv-chewp').hidden = true; $('sv-chewed-toggle').setAttribute('aria-expanded', 'false'); }
+  $('sv-chewed-toggle').addEventListener('click', e => { e.stopPropagation(); $('sv-chewp').hidden ? openChewed() : closeChewed(); });
+  $('sv-chewp').addEventListener('click', async e => {
+    if (e.target.closest('[data-close]')) return closeChewed();
+    const b = e.target.closest('[data-accept], [data-dismiss], [data-retire], [data-taste]');
+    if (!b) return;
+    b.disabled = true;
+    const d = b.dataset;
+    if (d.accept) await send('/api/chews/digest/accept', 'POST', { term: d.accept, kind: d.kind, track: d.track || null });
+    else if (d.dismiss) await send('/api/chews/digest/dismiss', 'POST', { term: d.dismiss });
+    else if (d.retire) await send('/api/chews/digest/retire', 'POST', { term: d.retire });
+    else if (d.taste) await send('/api/chews/taste', 'POST', { on: d.taste === 'on' });
+    await openChewed();
+    // Anything but "Not this" changes what Survey lets in or how it ranks.
+    if (!d.dismiss) { loadProfiles().then(() => { recallLens(); loadJobs(true); }); }
+  });
   document.addEventListener('click', e => {
-    if (asking == null || e.target.closest('[data-why], [data-remove]')) return;
-    asking = null; render();
+    if ($('sv-chewp').hidden || e.target.closest('#sv-chewp, #sv-chewed-toggle')) return;
+    closeChewed();
   });
-  document.addEventListener('keydown', e => {
-    if (asking != null && e.key === 'Escape') { asking = null; render(); }
-  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('sv-chewp').hidden) closeChewed(); });
 
   // ── Preview and pursue ───────────────────────────────────────────────
   const IN_STUDIO = document.body.classList.contains('embedded');
@@ -619,6 +774,7 @@
     const j = jobs.find(x => x.job_id === id); if (!j) return;
     openId = id;
     document.querySelectorAll('.sv-table tr[data-row]').forEach(tr => tr.classList.toggle('is-open', Number(tr.dataset.row) === id));
+    closeChewed();
     const over = $('sv-over');
     const age = !j.posted_date ? '' : j.days_old > 0 ? ` · posted ${j.days_old}d ago` : ' · posted today';
     over.hidden = false;
@@ -632,10 +788,10 @@
           ? `<span class="sv-done">${doneLabel(j)} · in the Pipeline</span>`
           : `<button type="button" class="sv-over-btn sv-over-btn--go" data-pursue="${id}" title="${PURSUE_TIP}">${IN_STUDIO ? 'Pursue in Render →' : 'Pursue'}</button>
         <button type="button" class="sv-over-btn" data-save="${id}" ${j.is_saved ? 'disabled' : ''}>${j.is_saved ? 'In the pipeline' : 'Save for later'}</button>
-        <button type="button" class="sv-over-btn" data-remove-over="${id}" title="Remove it from Survey for good, then say why">Remove</button>`}
+        ${pairHtml(id, true)}`}
         <a class="sv-over-btn" href="${escH(j.url)}" target="_blank" rel="noopener">Open the posting ↗</a>
       </div>
-      <p class="sv-over-keys">↑ ↓ the next posting · ${doneLabel(j) ? '' : 'P pursue · '}Esc close</p>
+      <p class="sv-over-keys">↑ ↓ the next posting · ${doneLabel(j) ? '' : 'P pursue · C chew · X remove · '}Esc close</p>
       <p class="sv-over-msg" id="sv-over-msg"></p>
       <div id="sv-over-body"><p class="sv-over-none">Loading the posting…</p></div>`;
     over.scrollTop = 0;
@@ -649,7 +805,7 @@
   }
   document.addEventListener('click', e => {
     if ($('sv-over').hidden) return;
-    if (e.target.closest('#sv-over, [data-preview], [data-pursue], .sv-save, [data-remove], [data-remove-over], [data-why]')) return;
+    if (e.target.closest('#sv-over, #sv-undo, [data-preview], [data-pursue], .sv-save, [data-chew], [data-remove], [data-chew-over], [data-remove-over]')) return;
     closePreview();
   });
   function closePreview() {
@@ -659,10 +815,8 @@
   $('sv-over').addEventListener('click', e => {
     if (e.target.closest('[data-close]')) return closePreview();
     const go = e.target.closest('[data-pursue]'); if (go) return pursue(Number(go.dataset.pursue), go);
-    const rm = e.target.closest('[data-remove-over]');
-    if (rm) { rm.outerHTML = whyHtml(rm.dataset.removeOver, 'sv-over-btn'); return; }
-    const why = e.target.closest('[data-why]');
-    if (why) return removeJob(Number(why.dataset.id), why.dataset.why);
+    const ch = e.target.closest('[data-chew-over]'); if (ch) return chewJob(Number(ch.dataset.chewOver));
+    const rm = e.target.closest('[data-remove-over]'); if (rm) return removeJob(Number(rm.dataset.removeOver));
     const sv = e.target.closest('[data-save]');
     if (sv && !sv.disabled) {
       sv.disabled = true;
@@ -680,7 +834,11 @@
       const i = ids.indexOf(openId), next = ids[i + (e.key === 'ArrowDown' ? 1 : -1)];
       if (next != null) { openPreview(next); document.querySelector(`.sv-table tr[data-row="${next}"]`)?.scrollIntoView({ block: 'nearest' }); }
     }
-    if (e.key.toLowerCase() === 'p' && openId != null && !doneLabel(jobs.find(x => x.job_id === openId) || {})) { e.preventDefault(); pursue(openId); }
+    const open = openId != null && !doneLabel(jobs.find(x => x.job_id === openId) || {});
+    if (!open || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key.toLowerCase() === 'p') { e.preventDefault(); pursue(openId); }
+    if (e.key.toLowerCase() === 'c') { e.preventDefault(); chewJob(openId); }
+    if (e.key.toLowerCase() === 'x') { e.preventDefault(); removeJob(openId); }
   });
 
   // Pursue: into the pipeline as Preparing, then straight into Render (in the studio).
@@ -701,7 +859,7 @@
     }
   }
 
-  loadSummary(); loadTerms();
+  loadSummary(); loadTerms(); loadChewCount();
   loadProfiles().then(() => { recallLens(); loadJobs(); });
 </script>
 {% endblock %}

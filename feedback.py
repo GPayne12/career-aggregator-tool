@@ -1,23 +1,15 @@
-"""What Survey learns when a posting is removed, and why.
+"""Removed postings, and how a title or description is read.
 
-A removed posting never comes back: not the same posting, and not the same
-title from the same company posted again under a new link. Each reason also
-teaches Survey something, applied as a lower score (never a hidden posting):
+A removed posting never comes back: not the same posting, and not the same title
+from the same company posted again under a new link. Removing is one click and
+teaches nothing. (It once asked why, and lowered similar postings; George retired
+that on 2026-11-16. What Survey learns now comes from chewed postings: chew.py.)
 
-  role              the kind of role is wrong: the same role, at any company,
-                    scores 15 lower (up to 30)
-  responsibilities  the work described is wrong: a posting describing much the
-                    same work scores 10 lower (up to 20)
-  experience        the level is wrong (too junior or too senior): a posting
-                    at the same level scores 15 lower (up to 30). The level is
-                    the title's seniority, and the years of experience it asks for.
+role_key, level, years_asked and work_words read a posting; chew.py uses them.
 """
-import json
 import re
 from collections import Counter
-from typing import Dict, List, Optional
-
-REASONS = ("role", "responsibilities", "experience")
+from typing import List, Optional
 
 _SENIORITY = re.compile(r"\b(senior|sr\.?|staff|lead|principal|associate|junior|jr\.?|entry[- ]level|"
                         r"i{1,3}|iv|[1-4]|level \d)\b", re.I)
@@ -66,53 +58,13 @@ def years_asked(text: Optional[str]) -> Optional[int]:
     return min(found) if found else None
 
 
-def record(job, reason: str) -> Dict:
-    """What a removal keeps, for teaching."""
-    return {
-        "role": role_key(job.title),
-        "words": work_words(job.description) if reason == "responsibilities" else [],
-        "level": level(job.title) if reason == "experience" else None,
-        "years": years_asked(job.description) if reason == "experience" else None,
-    }
-
-
 class Lessons:
+    """Which postings were removed: by id, by link, or the same title at the same company."""
     def __init__(self, removals):
         self.ids = {r.job_id for r in removals if r.job_id}
         self.urls = {r.url for r in removals if r.url}
         self.same = {(r.company_id, (r.title or "").strip().lower()) for r in removals}
-        self.roles = Counter()
-        self.works: List[set] = []
-        self.levels: List[Dict] = []
-        for r in removals:
-            kept = json.loads(r.learned_json or "{}")
-            if r.reason == "role" and kept.get("role"):
-                self.roles[kept["role"]] += 1
-            if r.reason == "responsibilities" and kept.get("words"):
-                self.works.append(set(kept["words"]))
-            if r.reason == "experience" and kept.get("level"):
-                self.levels.append(kept)
 
     def removed(self, job) -> bool:
         return (job.id in self.ids or job.url in self.urls
                 or (job.company_id, (job.title or "").strip().lower()) in self.same)
-
-    def penalty(self, job):
-        """(points off, why) from what removals taught."""
-        off, why = 0, []
-        n = self.roles.get(role_key(job.title), 0)
-        if n:
-            off += min(30, 15 * n); why.append("like a role you removed")
-        if self.works and job.description:
-            mine = set(work_words(job.description))
-            alike = sum(1 for w in self.works if mine and len(mine & w) / len(mine | w) >= 0.3)
-            if alike:
-                off += min(20, 10 * alike); why.append("like work you removed")
-        if self.levels:
-            lv, yrs = level(job.title), years_asked(job.description)
-            # Same level, and (when both name them) within a year of the same experience.
-            alike = sum(1 for k in self.levels if k["level"] == lv
-                        and (yrs is None or k.get("years") is None or abs(yrs - k["years"]) <= 1))
-            if alike:
-                off += min(30, 15 * alike); why.append("a level you removed")
-        return off, why
