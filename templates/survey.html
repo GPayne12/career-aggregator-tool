@@ -101,7 +101,7 @@
   .bar3-dot { position:absolute; top:5px; right:5px; width:6px; height:6px; border-radius:50%; background:var(--tang); }
 
   /* ── Refine: opens under the bar ───────────────────────────────────── */
-  .sv-refine { background:var(--bg); border-bottom:1px solid var(--line); padding:6px 20px 10px; position:sticky; top:44px; z-index:4; }
+  .sv-refine { background:var(--bg); border-bottom:1px solid var(--line); padding:6px 20px 10px; position:sticky; top:var(--bar-h, 44px); z-index:4; }
   .sv-refine-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:5px 0; }
   .sv-label { font:600 12px var(--mono); color:var(--ink3); width:84px; flex:none; }
   html body .sv-chips { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
@@ -155,6 +155,11 @@
   .sv-table th { text-align:left; white-space:nowrap; font:600 12px var(--mono) !important; color:var(--ink3) !important; padding:12px 8px 8px !important;
                  border:0 !important; border-bottom:1px solid var(--line) !important; text-transform:none !important; letter-spacing:.02em; cursor:pointer; user-select:none; }
   .sv-table th.no-sort { cursor:default; }
+  /* Column headers freeze under the bar while the list scrolls. */
+  /* Separate borders, so a frozen header cell keeps its own rule line and covers its whole box:
+     with collapsed borders the line stays behind and the cell's last pixel shows the rows through. */
+  table.sv-table { border-collapse:separate; border-spacing:0; }
+  .sv-table thead th { position:sticky; top:var(--head-top, 44px); z-index:3; background:var(--bg) !important; }
   .sv-table th .ind { color:#bdb7ac; margin-left:3px; }
   .sv-table td { vertical-align:top; padding:12px 8px !important; border:0 !important; border-bottom:1px solid var(--hair) !important; font-size:15px; overflow:hidden; }
   .sv-table tr:hover > td { background:rgba(240,237,231,.45); }
@@ -861,5 +866,18 @@
 
   loadSummary(); loadTerms(); loadChewCount();
   loadProfiles().then(() => { recallLens(); loadJobs(); });
+</script>
+<script>
+  // Column headers stay in view: they sit just under the bar (and whatever is open
+  // beneath it), at whatever height that is.
+  (() => {
+    const parts = [...document.querySelectorAll('.bar3, .sv-refine')];
+    const set = () => {
+      const root = document.documentElement.style;
+      root.setProperty('--bar-h', parts[0].offsetHeight + 'px');
+      root.setProperty('--head-top', parts.reduce((h, el) => h + el.offsetHeight, 0) + 'px');
+    };
+    const ro = new ResizeObserver(set); parts.forEach(el => ro.observe(el)); set();
+  })();
 </script>
 {% endblock %}
