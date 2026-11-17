@@ -599,7 +599,7 @@
 
   // ── Where a posting stands in the pipeline ───────────────────────────
   // Once applied (or further), a posting is done here: no Pursue, no Save.
-  const DONE = { applied: 'Applied', interviewing: 'Interviewing', offer: 'Offer', rejected: 'Declined', archived: 'Archived' };
+  const DONE = { applied: 'Applied', interviewing: 'Interviewing', offer: 'Offer', rejected: 'Phased out', archived: 'Archived' };
   const shortDate = iso => iso ? new Date(iso.endsWith('Z') ? iso : iso + 'Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
   function doneLabel(j) {
     const d = DONE[j.pipeline_status]; if (!d) return '';
@@ -772,7 +772,7 @@
   // ── Preview and pursue ───────────────────────────────────────────────
   const IN_STUDIO = document.body.classList.contains('embedded');
   const PURSUE_LABEL = IN_STUDIO ? 'Pursue →' : 'Pursue';
-  const PURSUE_TIP = IN_STUDIO ? 'Into Render now: Signaling, then the letter' : 'Into the pipeline as Preparing';
+  const PURSUE_TIP = IN_STUDIO ? 'Into Render now: Signaling, then the letter' : 'Into the pipeline as Saved';
   let openId = null;
 
   async function openPreview(id) {
@@ -846,7 +846,7 @@
     if (e.key.toLowerCase() === 'x') { e.preventDefault(); removeJob(openId); }
   });
 
-  // Pursue: into the pipeline as Preparing, then straight into Render (in the studio).
+  // Pursue: into the pipeline as Saved, then straight into Render (in the studio).
   async function pursue(id, btn) {
     const msg = $('sv-over-msg');
     if (btn) { btn.disabled = true; btn.textContent = 'Opening Render…'; }
@@ -857,7 +857,7 @@
       if (!r.ok) throw new Error(d.detail || r.status);
       const j = jobs.find(x => x.job_id === id); if (j) { j.is_saved = true; j.pipeline_status = d.status; }
       if (IN_STUDIO) parent.postMessage({ source: 'search', action: 'prepare', pipelineId: d.id }, '*');
-      else { if (msg) msg.textContent = 'In the pipeline as Preparing.'; if (btn) btn.textContent = 'Pursued'; render(); }
+      else { if (msg) msg.textContent = 'In the pipeline as Saved.'; if (btn) btn.textContent = 'Pursued'; render(); }
     } catch (err) {
       if (btn) { btn.disabled = false; btn.textContent = IN_STUDIO ? 'Pursue →' : 'Pursue'; }
       if (msg) { msg.style.color = 'var(--miss)'; msg.textContent = `Couldn't pursue it: ${err.message}`; }

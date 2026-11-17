@@ -6,8 +6,9 @@
 <nav class="bar3 co-bar" aria-label="Landscape">
   <div class="co-filters" role="tablist" id="co-filters"></div>
   <span class="bar3-spacer"></span>
+  <label class="bar3-find"><span class="sr">Find a company</span>
+    <input id="co-find" type="search" placeholder="Find a company" autocomplete="off"></label>
   <button type="button" class="co-btn co-btn--line" id="co-edit-toggle" aria-pressed="false" title="Show what's editable (or hold ⌥)">✎ Edit</button>
-  <button type="button" class="co-btn co-btn--line" id="co-lookup" title="Find the website and job board for every company that isn't verified">Look up websites and job boards</button>
   <button type="button" class="co-btn co-btn--solid" id="add-open" aria-expanded="false" aria-controls="add-panel" title="LinkedIn intake, one by hand, or a CSV">+ Add companies</button>
 </nav>
 {% endblock %}
@@ -98,6 +99,9 @@
              background:#faf9f7; border-bottom:1px solid #d4cfc7; position:sticky; top:0; z-index:5; }
   .co-bar .bar3-spacer { flex:1; }
   .co-bar .co-filters { margin:0; }
+  .co-bar .bar3-find input { width:200px; margin:0 4px 0 0; padding:5px 10px !important; font:12px var(--mono) !important; box-sizing:border-box; height:auto !important;
+                             border:1px solid var(--line, #d4cfc7) !important; border-radius:999px !important; background:var(--paper, #fff) !important; }
+  .co-bar .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
   .co-bar button.co-btn--line, .co-bar button.co-btn--solid { padding:7px 14px; }
   .co-bar button.co-btn + button.co-btn { margin-left:4px; }
 
@@ -209,7 +213,7 @@
     unverified: { label: 'to review',      order: 2, hint: 'A page typed in by hand. Check it, then verify.' },
     website:    { label: 'website only',   order: 3, hint: 'Only the website was found. Find the careers page and paste it.' },
     none:       { label: 'nothing found',  order: 4, hint: 'Nothing found. Add the website or careers page by hand.' },
-    unknown:    { label: 'not looked up',  order: 5, hint: 'Not looked up yet. Use "Look up websites and job boards".' },
+    unknown:    { label: 'not looked up',  order: 5, hint: 'Not looked up yet. Use Look up on its row.' },
   };
   const statusOf = c => (c.url_status && STATUS[c.url_status]) ? c.url_status : 'unknown';
   const FILTERS = [
@@ -219,6 +223,9 @@
     ['skipped', 'Skipped', c => c.is_skipped],
     ['all', 'All', () => true],
   ];
+  // Find: a name, website or career page; it narrows every tab, and the counts follow.
+  const findQ = () => document.getElementById('co-find').value.toLowerCase().trim();
+  const hit = c => { const q = findQ(); return !q || [c.name, c.website, c.career_url].some(v => (v || '').toLowerCase().includes(q)); };
   const PLATFORM = { workday: 'Workday', greenhouse: 'Greenhouse', lever: 'Lever', ashby: 'Ashby', smartrecruiters: 'SmartRecruiters', page: 'Careers page', generic: 'Careers page' };
 
   function escH(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -287,7 +294,7 @@
   function renderFilters() {
     const el = document.getElementById('co-filters');
     el.innerHTML = FILTERS.map(([k, label, fn]) =>
-      `<button type="button" class="co-tab${filter === k ? ' active' : ''}" data-filter="${k}">${label}<span class="co-count">${companiesList.filter(fn).length}</span></button>`).join('');
+      `<button type="button" class="co-tab${filter === k ? ' active' : ''}" data-filter="${k}">${label}<span class="co-count">${companiesList.filter(c => fn(c) && hit(c)).length}</span></button>`).join('');
   }
 
   function sortInd(col) { return sortCol !== col ? '⇅' : (sortDir === 1 ? '↑' : '↓'); }
@@ -303,13 +310,13 @@
 
   function renderTable() {
     const fn = (FILTERS.find(f => f[0] === filter) || FILTERS[0])[2];
-    const rows = companiesList.filter(fn).sort((a, b) => {
+    const rows = companiesList.filter(c => fn(c) && hit(c)).sort((a, b) => {
       const av = sortValue(a), bv = sortValue(b);
       if (av < bv) return -sortDir; if (av > bv) return sortDir;
       return a.name.localeCompare(b.name);
     });
     const list = document.getElementById('companies-list');
-    if (!rows.length) { list.innerHTML = `<p class="co-empty" style="padding:18px 0;">Nothing here.</p>`; return; }
+    if (!rows.length) { list.innerHTML = `<p class="co-empty" style="padding:18px 0;">${findQ() ? `No company here matches “${escH(findQ())}”.` : 'Nothing here.'}</p>`; return; }
     list.innerHTML = `
         <table class="co-table">
           <colgroup><col class="c-name"><col class="c-site"><col class="c-page"><col class="c-status"><col class="c-score"><col class="c-score"><col class="c-score"><col class="c-act"></colgroup>
@@ -502,23 +509,25 @@
   window.addEventListener('keyup', e => { if (e.key === 'Alt' && toggle.getAttribute('aria-pressed') !== 'true') document.documentElement.classList.remove('co-reveal'); });
   window.addEventListener('blur', () => { if (toggle.getAttribute('aria-pressed') !== 'true') document.documentElement.classList.remove('co-reveal'); });
 
-  // ── Look up everything not verified ──────────────────────────────────────
-  document.getElementById('co-lookup').addEventListener('click', () => {
-    const btn = document.getElementById('co-lookup'), out = document.getElementById('co-progress');
-    btn.disabled = true; out.hidden = false; out.textContent = 'Starting…';
+  document.getElementById('co-find').addEventListener('input', () => { renderFilters(); renderTable(); });
+
+  // ── Look up everything not verified (run after a CSV import) ─────────────
+  function lookUpAll() {
+    const out = document.getElementById('co-progress');
+    out.hidden = false; out.textContent = 'Starting…';
     const es = new EventSource('/api/companies/discover-urls');
     es.onmessage = ev => {
       const d = JSON.parse(ev.data);
       if (d.type === 'start') out.textContent = `Looking up ${d.total} companies…`;
       else if (d.type === 'progress') out.textContent = `${d.index} of ${d.total} · ${d.company}: ${d.status ? STATUS[d.status]?.label || d.status : 'no result'}`;
       else if (d.type === 'done' || d.type === 'error') {
-        es.close(); btn.disabled = false;
+        es.close();
         out.textContent = d.type === 'done' ? `Done: a job board for ${d.found} of ${d.total}. Review them under To review.` : `Stopped: ${d.message}`;
         loadCompanies();
       }
     };
-    es.onerror = () => { es.close(); btn.disabled = false; out.textContent = 'The lookup stopped. Run it again to carry on; finished ones are kept.'; loadCompanies(); };
-  });
+    es.onerror = () => { es.close(); out.textContent = 'The lookup stopped. Use Look up on a row to carry on; finished ones are kept.'; loadCompanies(); };
+  }
 
   const embedded = document.body.classList.contains('embedded');
   // ── Adding companies ──────────────────────────────────────────────────────
@@ -574,11 +583,12 @@
       const form = new FormData(); form.append('file', file);
       const d = await apiJson('/api/companies/upload-csv', { method: 'POST', body: form });
       let m = `<span class="ok">${d.added} added</span>, ${d.skipped} already in Pathways.`;
-      if (d.added) m += ` Look them up with <b>Look up websites and job boards</b>.`;
+      if (d.added) m += ` Looking them up now; progress shows above the list.`;
       if (d.errors && d.errors.length) m += ` <span class="err">${escH(d.errors.join('; '))}</span>`;
       say('add-csv-msg', m);
       document.getElementById('add-csv-file').value = '';
       await loadCompanies();
+      if (d.added) lookUpAll();
     } catch (err) { say('add-csv-msg', `<span class="err">Import failed: ${escH(err.message)}</span>`); }
     finally { btn.disabled = false; btn.textContent = 'Import'; }
   });

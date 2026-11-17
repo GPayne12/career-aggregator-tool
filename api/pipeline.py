@@ -12,10 +12,10 @@ from models import PipelineJob, Job, Company
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
-# preparing and ready are the application-workflow stages between saving a job
-# and applying (set by the portfolio studio's Render tool).
+# Everything before applying is saved; how far Render's preparation has got is
+# the checklist (the arc on Pipeline's dots), not a stage.
 # archived: kept on record, out of the way (off the field and the counts).
-STATUSES = ["saved", "preparing", "ready", "applied", "interviewing", "offer", "rejected", "archived"]
+STATUSES = ["saved", "applied", "interviewing", "offer", "rejected", "archived"]
 MAX_WORK_BYTES = 2_000_000
 
 
@@ -83,8 +83,6 @@ class ChecklistRequest(BaseModel):
 
 class PipelineResponse(BaseModel):
     saved: List[PipelineJobResponse]
-    preparing: List[PipelineJobResponse] = []
-    ready: List[PipelineJobResponse] = []
     applied: List[PipelineJobResponse]
     rejected: List[PipelineJobResponse]
     interviewing: List[PipelineJobResponse]
@@ -196,7 +194,7 @@ def add_pipeline_job_manual(request: PipelineAddRequest, background: BackgroundT
 @router.post("/pursue")
 def pursue_job(request: PipelineSaveRequest, background: BackgroundTasks, db: Session = Depends(get_db)):
     """Survey's "Pursue in Render": find or make this posting's pipeline entry, move
-    it to Preparing if it was only saved, and return its id for Render."""
+    return its id for Render."""
     job = db.query(Job).filter(Job.id == request.job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -204,10 +202,6 @@ def pursue_job(request: PipelineSaveRequest, background: BackgroundTasks, db: Se
     if not pj:
         save_job(request, background, db)
         pj = db.query(PipelineJob).filter(PipelineJob.job_id == job.id).first()
-    if pj.status == "saved":
-        pj.status = "preparing"
-        pj.stage_changed_date = datetime.utcnow()
-        db.commit()
     return {"id": pj.id, "status": pj.status}
 
 
@@ -269,15 +263,12 @@ def get_pipeline_item(pipeline_job_id: int, db: Session = Depends(get_db)):
 
 @router.put("/item/{pipeline_job_id}/work", response_model=PipelineItemResponse)
 def set_work(pipeline_job_id: int, request: WorkRequest, db: Session = Depends(get_db)):
-    """Store Render's work on this application. The first save moves a saved job to preparing."""
+    """Store Render's work on this application."""
     pj = _get(pipeline_job_id, db)
     data = json.dumps(request.work)
     if len(data) > MAX_WORK_BYTES:
         raise HTTPException(status_code=413, detail="That draft is too large to keep.")
     pj.work_json = data
-    if pj.status == "saved":
-        pj.status = "preparing"
-        pj.stage_changed_date = datetime.utcnow()
     db.commit()
     db.refresh(pj)
     return _item(pj, db)
@@ -397,7 +388,7 @@ def update_pipeline_job(
     if request.status == "applied" and not pipeline_job.applied_date:
         pipeline_job.applied_date = datetime.utcnow()
     # Moved back before applying (an undo, or a mistake): it wasn't sent.
-    if request.status in ("saved", "preparing", "ready"):
+    if request.status == "saved":
         pipeline_job.applied_date = None
     if moved:
         pipeline_job.stage_changed_date = datetime.utcnow()

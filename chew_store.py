@@ -18,12 +18,17 @@ from feedback import Lessons
 from models import Chew, Job, KeywordProfile, PipelineJob, Removal, Setting
 from profile_terms import AI_WORD, CRAFT, LEARNING_WORK, WINDOW_DAYS, facet_terms, has_term
 
-TARGET_WEIGHT = {"preparing": 1.0, "ready": 1.0, "applied": 1.0, "interviewing": 1.0, "offer": 1.0, "saved": 0.5}
+# A saved job counts half until Render has work on it (once, the Preparing stage).
+TARGET_WEIGHT = {"applied": 1.0, "interviewing": 1.0, "offer": 1.0, "saved": 0.5}
 FIELD_FACET = "From the field"      # the skills facet that holds accepted field language
 ACCEPTED, DISMISSED, TASTE = "chew_accepted", "chew_dismissed", "chew_taste"
 MIN_TEXT = 400                      # a description shorter than this isn't read as one
 # A word accepted this many rounds away from George's own Profile is flagged as drift.
 FAR_GENERATION = 3
+
+
+def _target_weight(pj: PipelineJob) -> float:
+    return 1.0 if pj.status == "saved" and pj.work_json else TARGET_WEIGHT[pj.status]
 
 
 def get_list(db: Session, key: str) -> list:
@@ -82,7 +87,7 @@ def load_sets(db: Session) -> Dict[str, List[dict]]:
         j = job(pj.job_id)
         targets.append({"title": pj.title, "text": pj.posting_text or (j.description if j else None),
                         "location_type": j.location_type if j else None, "track": _track(pj.title),
-                        "weight": TARGET_WEIGHT[pj.status] * chew.age_weight(_age(pj.stage_changed_date or pj.saved_date, now))})
+                        "weight": _target_weight(pj) * chew.age_weight(_age(pj.stage_changed_date or pj.saved_date, now))})
     chewed = []
     for c in db.query(Chew).all():
         context = json.loads(c.context_json or "{}")
