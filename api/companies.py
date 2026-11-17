@@ -194,8 +194,14 @@ def company_field(db: Session = Depends(get_db)):
             "changed": p.stage_changed_date.isoformat() if p.stage_changed_date else None,
         })
 
+    # The Pipeline is the record: a company with an application under way is drawn
+    # even if the company itself was deleted in Landscape. (Deleted companies whose
+    # applications are all archived stay off the field.)
+    live_cids = {cid for cid, rows in apps.items() if any(a["status"] != "archived" for a in rows)}
     out = []
-    for c in db.query(Company).filter(Company.is_active == True).all():
+    for c in db.query(Company).all():
+        if not c.is_active and c.id not in live_cids:
+            continue
         out.append({
             "id": c.id, "name": c.name, "website": c.website, "career_url": c.career_url or "",
             "url_status": c.url_status, "is_skipped": bool(c.is_skipped),
@@ -500,5 +506,11 @@ def update_company(company_id: int, company: CompanyUpdate, db: Session = Depend
 @router.delete("/{company_id}", status_code=204)
 def delete_company(company_id: int, db: Session = Depends(get_db)):
     db_company = _company(db, company_id)
+    # A company with an application under way can't be deleted out from under it:
+    # the Pipeline would keep the application and the Overview would lose its dot.
+    from models import PipelineJob
+    live = db.query(PipelineJob).filter(PipelineJob.company_id == company_id, PipelineJob.status != "archived").count()
+    if live:
+        raise HTTPException(status_code=409, detail=f"{db_company.name} has {live} application{'s' if live != 1 else ''} in the Pipeline. Archive {'them' if live != 1 else 'it'} there first, or Skip the company instead.")
     db_company.is_active = False
     db.commit()
