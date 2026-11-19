@@ -12,7 +12,7 @@ from feedback import Lessons, role_key
 from chew import Chewed
 from chew_store import field_terms, load_sets, build_taste, taste_on
 from profile_terms import (facet_terms, has_term, is_engineering, WINDOW_DAYS, ADJACENT, NOT_ADJACENT,
-                           adjacent_title, craft_in, sales_only, CORE_TITLE, LIGHT, light_role, bridge_role)
+                           adjacent_title, craft_in, sales_only, CORE_TITLE, LIGHT, light_role, bridge_role, learning_evidence)
 from regions import keep as keep_region
 from synonyms import expand_keywords, SYNONYMS
 
@@ -86,22 +86,38 @@ def _distinct(terms: List[str]) -> List[str]:
     return [t for t in out if not any(o.lower() != t.lower() and has_term(o, t) for o in out)]
 
 
+# Profile terms that name a function, not a learning role: "Accounting Enablement
+# Manager", "Sr. Instructor, Cloud Security". Alone in a title they need the description
+# to show learning-design work, and they score as an adjacent word, not a role.
+GENERIC_TITLE_TERMS = {"enablement", "trainer", "instructor", "instructional", "l&d"}
+
+
+def _generic_only(terms: List[str]) -> bool:
+    return bool(terms) and all(t.lower() in GENERIC_TITLE_TERMS for t in terms)
+
+
 def _fit(job, via: Optional[str], title_terms: List[str], can: List[str], want: List[str]) -> tuple:
-    """How well a posting fits, 0–100, and why. Honest rather than flattering:
-      title,   up to 50: a core learning-design title 50; another of your role terms 35;
-                         an engineering-light, customer-experience, AI-hybrid,
-                         workforce or design role 25;
-                         a learning-adjacent title word 20; in by its description only
+    """How well a posting fits, 0–100, and why. Honest rather than flattering, and
+    leaning toward instructional and learning design (learning engineering included):
+      title,   up to 50: a core learning-design or learning-engineering title 50;
+                         another of your role terms 35; an engineering-light role 25;
+                         a learning-adjacent word, or only a generic term
+                         ("enablement", "trainer") 20; a customer-experience, AI-hybrid,
+                         workforce or design bridge 20; in by its description only
                          (craft, or the field's language learned from chewed postings) 10
       details, up to 50: 5 for each detail from your profile the description names
                          (craft, your skills, your role terms), up to 10 of them.
     A posting with no description to read can't score high: there's little to go on."""
-    if via == "title":
-        title_part = 50 if CORE_TITLE.search(job.title or "") else 35
+    if CORE_TITLE.search(job.title or "") and via in ("title", "adjacent"):
+        title_part = 50
+    elif via == "title":
+        title_part = 20 if _generic_only(title_terms) else 35
     elif via == "adjacent":
-        title_part = 50 if CORE_TITLE.search(job.title or "") else 20
-    elif via in ("light", "bridge"):
+        title_part = 20
+    elif via == "light":
         title_part = 25
+    elif via == "bridge":
+        title_part = 20
     else:
         title_part = 10 if via in ("text", "field") else 0
     desc = job.description or ""
@@ -215,6 +231,9 @@ def search_jobs(
             hits = [(title_hits(job.title, ks), tr, [k for k in ks if any(has_term(job.title, t) for t in [k] + SYNONYMS.get(k.lower(), []))])
                     for tr, ks in want_facets]
             best = max(hits, key=lambda h: h[0])
+            if best[0] and _generic_only(best[2]) and job.description and not learning_evidence(job.description) \
+                    and not CORE_TITLE.search(job.title):
+                continue      # "Accounting Enablement Manager": the word, but no learning work behind it
             if best[0]:
                 track, via, title_terms = best[1], "title", best[2]
             elif adjacent_title(job.title):

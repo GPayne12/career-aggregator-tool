@@ -79,15 +79,24 @@ def title_matches(titles: List[str], tracks: List[tuple]) -> dict:
 
 
 # Engineering titles count for neither track, unless the title is unmistakably
-# about learning ("E-learning Developer", "Learning Engineer", "Instructional ...").
+# about learning ("E-learning Developer", "Learning Engineer", "Learning Scientist",
+# "Course Developer", "Instructional ...").
 _ENGINEERING = re.compile(r"\b(engineer|engineering|software|developer|scientist|machine learning|sre|devops|backend|front[- ]?end|full[- ]?stack)\b", re.I)
-_LEARNING = re.compile(r"\b(instructional|e-?learning|curriculum|(?<!machine )learning engineer|learning design|learning experience|learning technolog)", re.I)
+# "learning" as in learning science, never as in machine/deep/reinforcement learning.
+_LRN = r"(?<!machine )(?<!deep )(?<!reinforcement )(?<!statistical )learning"
+_LEARNING = re.compile(r"\b(instructional|e-?learning|curriculum|courseware|psychometric|" + _LRN + r" (?:engineer|design|experience|technolog|scien|research|analytic|data|measurement|content)|"
+                       r"course (?:developer|designer)|training (?:developer|designer|content)|educational? content|assessment (?:developer|designer))", re.I)
+# Hard engineering: an engineering-light phrase elsewhere in the title doesn't excuse it
+# ("Lead Software Engineer - Customer Experience Technology" is still software).
+_HARD_ENGINEERING = re.compile(r"\b(software|machine learning|ml|backend|back[- ]end|front[- ]?end|full[- ]?stack|devops|sre|data scientist|research (?:scientist|engineer))\b", re.I)
 
 
 def is_engineering(title: Optional[str]) -> bool:
     """Heavy engineering (software, ML, backend, data science). Engineering-light roles
     (solutions, implementation, support, developer advocacy, technical writing…) aren't."""
-    return bool(title) and bool(_ENGINEERING.search(title)) and not _LEARNING.search(title) and not LIGHT.search(title)
+    if not title or not _ENGINEERING.search(title) or _LEARNING.search(title):
+        return False
+    return bool(_HARD_ENGINEERING.search(title)) or not LIGHT.search(title)
 
 
 # How far back Survey looks, and keeps postings when a board is read (George's
@@ -101,7 +110,7 @@ LEARNING_WORK = [
     "instructional design", "instructional designer", "learning design", "learning designer", "learning experience",
     "curriculum", "course design", "course development", "e-learning", "elearning", "learning management system", "lms",
     "addie", "storyboard", "storyboards", "adult learning", "learning objectives", "training materials", "training programs",
-    "training program", "facilitator guide", "articulate", "storyline", "rise 360", "captivate", "camtasia", "scorm", "xapi",
+    "training program", "facilitator guide", "articulate", "articulate storyline", "rise 360", "captivate", "camtasia", "scorm", "xapi",
     "needs analysis", "training needs", "microlearning", "blended learning", "learning programs", "learning and development",
     "enablement programs", "knowledge base", "learners", "learning content", "assessment design", "subject matter experts",
 ]
@@ -123,7 +132,9 @@ ADJACENT = re.compile(r"\b(learning|training|trainer|enablement|education|educat
                       r"workforce development|talent development|change management|adoption)\b", re.I)
 # Not learning roles, whatever their title words say.
 NOT_ADJACENT = re.compile(r"\b(paid training|no experience|machine learning|deep learning|reinforcement learning|mental health|group facilitator|"
-                          r"therapist|clinician|counsel(?:or|ing))\b", re.I)
+                          r"therapist|clinician|counsel(?:or|ing)|"
+                          # Clinical: in a hospital title "L&D" is Labor & Delivery, not Learning & Development.
+                          r"nurse|nursing|extern|labor (?:and|&) delivery|patient care)\b", re.I)
 # "Higher Education" naming a market ("Consultant, Higher Education") isn't a learning role on its own.
 MARKET_ONLY = re.compile(r"\b(higher education|education (?:sector|market|vertical))\b", re.I)
 SALES = re.compile(r"\b(sales|account (?:executive|manager)|business development|recruit(?:er|ing)|partnerships?)\b", re.I)
@@ -131,20 +142,29 @@ SALES_OK = re.compile(r"\b(enablement|training|trainer|learning|instruction)", r
 
 # Instructional-design craft, as a description names it. One is enough to include a job.
 CRAFT = ["instructional design", "instructional designer", "curriculum design", "curriculum development", "curriculum developer",
+         # Not bare "storyline": a narrative or marketing posting uses it too ("GTM Narrative Lead").
          "e-learning", "elearning", "addie", "storyboard", "storyboarding", "scorm", "xapi", "articulate storyline", "articulate 360",
-         "articulate rise", "rise 360", "storyline", "captivate", "adult learning", "learning objectives", "needs analysis",
+         "articulate rise", "rise 360", "captivate", "adult learning", "learning objectives", "needs analysis",
          "microlearning", "course design", "course development", "learning experience design", "learning management system", "lms",
          "learning design", "instructional materials", "training design", "blended learning"]
 
-# Core learning-design titles: the strongest title fit.
-CORE_TITLE = re.compile(r"\b(instructional design(?:er)?|learning design(?:er)?|learning experience design(?:er)?|curriculum (?:designer|developer|manager)|"
-                        r"e-?learning (?:developer|designer)|learning architect|(?<!machine )learning engineer|learning technologist|"
-                        r"instructional technologist)\b", re.I)
+# Core learning-design titles: the strongest title fit. Learning engineering sits here
+# too: learning science, learning research and analytics, assessment and psychometrics,
+# instructional systems, course and training development.
+CORE_TITLE = re.compile(r"\b(instructional design(?:er)?|learning design(?:er)?|learning experience design(?:er)?|curriculum (?:designer|developer|manager|architect|lead)|"
+                        r"e-?learning (?:developer|designer)|learning architect|learning technologist|instructional technologist|"
+                        r"instructional (?:systems? )?(?:designer|developer|specialist)|instructional systems design|"
+                        + _LRN + r" (?:engineer(?:ing)?|scien(?:ce|ces|tist)|research(?:er)?|analytics|measurement|evaluation|experience (?:architect|research(?:er)?)|"
+                        r"product (?:designer|manager)|content (?:designer|developer|strategist)|strateg(?:y|ist))|"
+                        r"(?:course|courseware|training) (?:designer|developer)|assessment (?:designer|developer|specialist)|psychometrician|"
+                        r"educational (?:researcher|data scientist|technologist))\b", re.I)
 
 
 def adjacent_title(title: Optional[str]) -> bool:
     if not title or NOT_ADJACENT.search(title) or is_engineering(title):
         return False
+    if CORE_TITLE.search(title):
+        return True   # "Psychometrician" or "Assessment Designer" carries no adjacent word
     words = ADJACENT.findall(title)
     if not words:
         return False
@@ -199,17 +219,39 @@ NOT_BRIDGE = re.compile(r"\b(counsel|attorney|legal|regulatory|recruit(?:er|ing)
                         r"payroll|security|phlebotom|blood|technician|interior)\b", re.I)
 
 
+def learning_evidence(description: Optional[str]) -> bool:
+    """The description shows learning-design work: one piece of ID craft, or two signs of it."""
+    return bool(description) and (bool(craft_in(description)) or len(learning_work(description)) >= 2)
+
+
+# A bridge whose title already says it's about learning needs nothing more.
+_LEARNING_CX = re.compile(r"\b(?:customer|client|member) (?:education|enablement|onboarding)\b", re.I)
+_LEARNING_WORKFORCE = re.compile(r"\b(workforce (?:transformation|development|readiness)|readiness|digital adoption|knowledge (?:manager|management))\b", re.I)
+
+
 def bridge_role(title, description):
-    """(track, label) for a bridge role, or None."""
+    """(track, label) for a bridge role, or None.
+
+    A bridge earns its place by learning work, not by its title family: a customer
+    success, AI, content or design role comes in only when its title is about
+    education, enablement or onboarding, or its description shows ID work. Without
+    that it's a tech role that happens to sit near learning, and it stays out."""
     if not title or NOT_BRIDGE.search(title) or NOT_ADJACENT.search(title) or sales_only(title):
         return None
+    evidence = learning_evidence(description)
     if CX_TITLE.search(title):
+        if not (_LEARNING_CX.search(title) or evidence):
+            return None
         return ("ai" if AI_WORD.search(title) else "learning"), CX_TITLE.search(title).group(0).lower()
     if AI_WORD.search(title):
+        if not (LEARN_WORD.search(title) or evidence):
+            return None
         return "ai", "AI"
     if WORKFORCE_TITLE.search(title):
+        if not (_LEARNING_WORKFORCE.search(title) or evidence):
+            return None
         return "learning", WORKFORCE_TITLE.search(title).group(0).lower()
-    if DESIGN_TITLE.search(title) and description and (AI_WORD.search(description) or LEARN_WORD.search(description)):
+    if DESIGN_TITLE.search(title) and evidence:
         return "learning", DESIGN_TITLE.search(title).group(0).lower()
     return None
 
