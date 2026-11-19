@@ -5,7 +5,8 @@
 {#- Pipeline: every application as a dot, flowing left to right through its stages.
     Read it like the Overview:
       lane (left → right)     saved · applied · interviewing · offer
-      the strip along the foot phased out
+      the strip along the foot phase out: drop a dot there and the application is chewed
+                              (it leaves the Pipeline and joins Survey's Chewed pile; Undo brings it back)
       height in a lane        how long since it last moved: fresh at the top, sinking with age
       colour                  the stage group, matching the Overview's bands
       size                    the company's interest, 0 to 9 (motivation + advocacy + postings)
@@ -195,17 +196,17 @@
     { key: 'interviewing', label: 'Interviewing', color: '#c47f00', quiet: 10 },
     { key: 'offer',        label: 'Offer',        color: '#c47f00', quiet: 5 },
   ];
+  // Phased out isn't a place an application stays: phasing out chews it, the same as
+  // Chew in Survey. It leaves the Pipeline and its posting joins the Chewed pile.
   const PHASED_OUT = { key: 'rejected', label: 'Phased out', color: '#c9c3b8', quiet: Infinity };
-  // Archived: kept on record (the List view, the drawer), off the field and the counts.
-  const ARCHIVED = { key: 'archived', label: 'Archived', color: '#b8b2a7', quiet: Infinity };
-  const STAGE = Object.fromEntries([...STAGES, PHASED_OUT, ARCHIVED].map(s => [s.key, s]));
+  const STAGE = Object.fromEntries([...STAGES, PHASED_OUT].map(s => [s.key, s]));
   const ORDER = STAGES.map(s => s.key);
   const PREP_STAGES = new Set(['saved']);
   const STEP_NAME = { posting: 'Posting', signaling: 'Signaling', resume: 'Resume updated', letter: 'Letter drafted', exported: 'Letter exported' };
   const SURFACE = '#faf9f7', DAY = 864e5;
   const embedded = document.body.classList.contains('embedded');
 
-  let items = [], byId = {}, version = null, selected = null, mode = null, view = 'field';
+  let items = [], byId = {}, version = null, selected = null, mode = null, view = 'field', phasedOut = 0;
   let sim = null, nodesSel = null, geo = null, layoutKey = '';
   const pulseUntil = new Map();   // id → time: pulse what just moved
   const mine = new Map();         // id → time: moves made here (so the poll doesn't announce them)
@@ -225,6 +226,7 @@
     const before = byId;
     version = d.version;
     items = d.items;
+    phasedOut = d.phased_out || 0;
     byId = Object.fromEntries(items.map(a => [a.id, a]));
     // What moved elsewhere (Render, another tab) pulses, and says so.
     const moved = items.filter(a => before[a.id] && before[a.id].status !== a.status && !((mine.get(a.id) || 0) > Date.now() - 15000));
@@ -255,7 +257,7 @@
     applyFind();
   }
   function counts() {
-    const live = items.filter(a => a.status !== 'rejected');
+    const live = items;   // everything in the Pipeline is live; phased out has been chewed
     document.getElementById('n-prep').textContent = live.filter(a => PREP_STAGES.has(stageOf(a))).length;
     document.getElementById('n-applied').textContent = live.filter(a => a.status === 'applied').length;
     document.getElementById('n-talking').textContent = live.filter(a => a.status === 'interviewing' || a.status === 'offer').length;
@@ -273,7 +275,7 @@
     const total = weight.reduce((s, w) => s + w, 0);
     let x = pad;
     const lanes = ORDER.map((k, i) => { const w = (W - 2 * pad) * weight[i] / total; const l = { key: k, x0: x, x1: x + w, y0: top, y1, n: n[k] }; x += w; return l; });
-    const strip = { key: 'rejected', x0: pad, x1: W - pad, y0: y1 + gap, y1: y1 + gap + stripH, n: items.filter(a => a.status === 'rejected').length };
+    const strip = { key: 'rejected', x0: pad, x1: W - pad, y0: y1 + gap, y1: y1 + gap + stripH, n: phasedOut };
     return { W, H, pad, top, lanes, strip, lane: Object.fromEntries([...lanes, strip].map(l => [l.key, l])) };
   }
   // Height in a lane is time since the last move: today at the top, two months and more at the bottom.
@@ -315,7 +317,9 @@
       .attr('fill', 'rgba(201,195,184,.12)');
     lanesG.append('rect').attr('class', 'lane-drop').attr('data-lane', 'rejected').attr('x', st.x0).attr('y', st.y0).attr('width', st.x1 - st.x0).attr('height', st.y1 - st.y0).attr('rx', 10);
     const dt = lanesG.append('text').attr('class', 'lane-name').attr('x', st.x0 + 10).attr('y', st.y0 + 18);
-    dt.append('tspan').text('Phased out '); dt.append('tspan').attr('class', 'n').text(st.n || '');
+    dt.append('tspan').text('Phased out '); dt.append('tspan').attr('class', 'n').text(st.n ? `${st.n} chewed` : '');
+    lanesG.append('text').attr('class', 'age-tick').attr('x', (st.x0 + st.x1) / 2).attr('y', (st.y0 + st.y1) / 2 + 8).attr('text-anchor', 'middle')
+      .text('Drop here to phase out: the application is chewed');
     // Age guides, faint, across the lanes.
     const l0 = geo.lanes[0];
     [[0, 'today'], [7, '1 wk'], [30, '1 mo']].forEach(([d, label]) => {
@@ -325,22 +329,19 @@
     });
 
     // Size: company interest, scaled down together when the field gets crowded.
-    const live = items.filter(a => a.status !== 'rejected' && a.status !== 'archived');
     const base = a => 4 + (a.interest || 0) * 1.25;
     const area = geo.lanes.reduce((s, l) => s + (l.x1 - l.x0) * (l.y1 - l.y0), 0);
-    const need = live.reduce((s, a) => s + Math.PI * (base(a) + 2) ** 2, 0);
+    const need = items.reduce((s, a) => s + Math.PI * (base(a) + 2) ** 2, 0);
     const k = Math.max(.45, Math.min(1, Math.sqrt(area * .32 / Math.max(need, 1))));
-    const rejected = items.filter(a => a.status === 'rejected').sort((a, b) => (when(a.stage_changed_date) || 0) - (when(b.stage_changed_date) || 0));
-    const rank = new Map(rejected.map((a, i) => [a.id, i]));
 
     const old = new Map((sim ? sim.nodes() : []).map(n => [n.id, n]));
-    const nodes = items.filter(a => a.status !== 'archived').map(a => {
+    const nodes = items.map(a => {
       const n = old.get(a.id) || { id: a.id };
       n.a = a; n.stage = stageOf(a);
-      n.r = n.stage === 'rejected' ? 4 : Math.max(3.5, base(a) * k);
+      n.r = Math.max(3.5, base(a) * k);
       const l = geo.lane[n.stage];
-      n.tx = n.stage === 'rejected' ? st.x0 + 90 + (st.x1 - st.x0 - 110) * ((rank.get(a.id) + .5) / Math.max(rejected.length, 1)) : (l.x0 + l.x1) / 2;
-      n.ty = n.stage === 'rejected' ? (st.y0 + st.y1) / 2 + 4 : ageY(l, daysIn(a));
+      n.tx = (l.x0 + l.x1) / 2;
+      n.ty = ageY(l, daysIn(a));
       if (n.x == null || resized && !old.has(a.id)) { n.x = n.tx + (Math.random() - .5) * 20; n.y = n.ty + (Math.random() - .5) * 10; }
       return n;
     });
@@ -388,7 +389,7 @@
       sim = d3.forceSimulation().on('tick', tick);
     }
     sim.nodes(nodes)
-      .force('x', d3.forceX(d => d.tx).strength(d => d.stage === 'rejected' ? .5 : .12))
+      .force('x', d3.forceX(d => d.tx).strength(.12))
       .force('y', d3.forceY(d => d.ty).strength(.35))
       .force('c', d3.forceCollide(d => d.r + (PREP_STAGES.has(d.stage) ? 4 : 1.5)).iterations(2))
       .alpha(resized ? 1 : .7).restart();
@@ -438,7 +439,33 @@
   function hideTip() { document.getElementById('tip').hidden = true; }
 
   // ── Moving: at once, with Undo ────────────────────────────────────────────
+  // Phasing out chews the application: it leaves the Pipeline at once, and Undo
+  // (the chew's undo) brings it back at the stage it left, with everything it had.
+  async function phaseOut(id) {
+    const a = byId[id]; if (!a) return;
+    mine.set(id, Date.now());
+    items = items.filter(x => x.id !== id); delete byId[id]; phasedOut++;
+    if (selected === id) { selected = null; mode = null; }
+    render();
+    try {
+      const r = await fetch(`/api/pipeline/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) });
+      if (!r.ok) throw new Error(r.status);
+      const d = await r.json();
+      version = null;
+      toast(`Phased out and chewed: ${a.title} · ${a.company}`, async () => {
+        const u = await fetch(`/api/chews/${d.chew_id}`, { method: 'DELETE' });
+        if (!(u.ok || u.status === 204)) return toast(`Couldn't bring back ${a.title}.`);
+        mine.set(id, Date.now()); pulseUntil.set(id, Date.now() + 8000);
+        await load(); if (byId[id]) select(id);
+      });
+    } catch {
+      await load();
+      toast(`Couldn't phase out ${a.title}. Pathways didn't answer.`);
+    }
+  }
+
   async function move(id, status, { undoable = true } = {}) {
+    if (status === 'rejected') return phaseOut(id);
     const a = byId[id]; if (!a || a.status === status) return;
     const prev = { status: a.status, stage_changed_date: a.stage_changed_date, applied_date: a.applied_date };
     a.status = status; a.stage_changed_date = new Date().toISOString().replace('Z', '');
@@ -493,8 +520,8 @@
       <p class="muted"><a href="${esc(a.url)}" target="_blank" rel="noopener">Open the posting ↗</a>${a.salary ? ` · ${esc(a.salary)}` : ''}</p>
 
       <h3>Stage</h3>
-      <div class="stages">${STAGES.map(btn).join('')}${btn(PHASED_OUT)}${btn(ARCHIVED)}</div>
-      <p class="keys">← → move a stage · P phase out · Esc close</p>
+      <div class="stages">${STAGES.map(btn).join('')}${btn(PHASED_OUT)}</div>
+      <p class="keys">← → move a stage · P phase out (chews it) · Esc close</p>
 
       <dl class="facts">
         <dt>here</dt><dd>${d < 1 ? 'moved today' : span(d)}${isQuiet(a) ? ' <span class="muted">· gone quiet</span>' : ''}</dd>
@@ -554,10 +581,9 @@
     if (e.key === 'Escape') { if (mode) closePanel(); hideTip(); return; }
     const a = byId[selected]; if (!a || mode !== 'item') return;
     const i = ORDER.indexOf(stageOf(a));
-    if (e.key === 'ArrowRight' && a.status !== 'rejected' && i < ORDER.length - 1) { e.preventDefault(); move(a.id, ORDER[i + 1]); }
-    else if (e.key === 'ArrowLeft' && a.status !== 'rejected' && i > 0) { e.preventDefault(); move(a.id, ORDER[i - 1]); }
-    else if (e.key === 'ArrowLeft' && a.status === 'rejected') { e.preventDefault(); move(a.id, 'applied'); }
-    else if (e.key.toLowerCase() === 'p' && a.status !== 'rejected') { e.preventDefault(); move(a.id, 'rejected'); }
+    if (e.key === 'ArrowRight' && i < ORDER.length - 1) { e.preventDefault(); move(a.id, ORDER[i + 1]); }
+    else if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); move(a.id, ORDER[i - 1]); }
+    else if (e.key.toLowerCase() === 'p') { e.preventDefault(); move(a.id, 'rejected'); }
   });
 
   // ── Adding one by hand ────────────────────────────────────────────────────
@@ -611,7 +637,7 @@
 
   // ── List view ─────────────────────────────────────────────────────────────
   function renderList() {
-    const groups = [...STAGES, PHASED_OUT, ARCHIVED].map(s => ({ s, rows: items.filter(a => stageOf(a) === s.key).sort((a, b) => daysIn(a) - daysIn(b)) }));
+    const groups = STAGES.map(s => ({ s, rows: items.filter(a => stageOf(a) === s.key).sort((a, b) => daysIn(a) - daysIn(b)) }));
     document.getElementById('list').innerHTML = groups.filter(g => g.rows.length).map(({ s, rows }) => `
       <h3><i style="background:${s.color}"></i>${s.label} · ${rows.length}</h3>
       <table class="pl-table"><colgroup><col class="c-t"><col class="c-c"><col class="c-a"><col class="c-p"><col class="c-s"></colgroup><tbody>
@@ -619,7 +645,7 @@
         <td><span class="t">${esc(a.title)}</span></td><td>${esc(a.company)}</td>
         <td class="age${isQuiet(a) ? ' is-quiet' : ''}">${span(daysIn(a))}</td>
         <td class="prep">${PREP_STAGES.has(stageOf(a)) ? `${a.prep}/${a.prep_steps}` : ''}</td>
-        <td><select data-move="${a.id}" aria-label="Stage">${[...STAGES, PHASED_OUT, ARCHIVED].map(o => `<option value="${o.key}"${o.key === stageOf(a) ? ' selected' : ''}>${o.label}</option>`).join('')}</select></td>
+        <td><select data-move="${a.id}" aria-label="Stage">${[...STAGES, PHASED_OUT].map(o => `<option value="${o.key}"${o.key === stageOf(a) ? ' selected' : ''}>${o.label}</option>`).join('')}</select></td>
       </tr>`).join('')}</tbody></table>`).join('') || '<p class="pl-empty" style="position:static">No applications yet.</p>';
   }
   document.getElementById('list').addEventListener('change', e => { const s = e.target.closest('[data-move]'); if (s) move(Number(s.dataset.move), s.value); });

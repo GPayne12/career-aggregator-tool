@@ -9,13 +9,15 @@ import json
 from database import SessionLocal, get_db
 from posting import fetch_posting_text
 from models import PipelineJob, Job, Company
+from chew_store import LIVE_STATUSES, phase_out, phased_out_count
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
 # Everything before applying is saved; how far Render's preparation has got is
 # the checklist (the arc on Pipeline's dots), not a stage.
-# archived: kept on record, out of the way (off the field and the counts).
-STATUSES = ["saved", "applied", "interviewing", "offer", "rejected", "archived"]
+# rejected ("Phased out") is a move, never a stored stage: phasing out chews the
+# application (chew_store.phase_out) and it leaves the Pipeline. Undo is the chew's undo.
+STATUSES = list(LIVE_STATUSES) + ["rejected"]
 MAX_WORK_BYTES = 2_000_000
 
 
@@ -39,6 +41,9 @@ class PipelineJobResponse(BaseModel):
     has_suggestions: bool = False
     has_letter: bool = False
     checklist: Optional[dict] = None
+    # Set when this move phased the application out: the chew it became (DELETE
+    # /api/chews/{chew_id} puts it back).
+    chew_id: Optional[int] = None
 
 
 class PipelineSaveRequest(BaseModel):
@@ -87,7 +92,6 @@ class PipelineResponse(BaseModel):
     rejected: List[PipelineJobResponse]
     interviewing: List[PipelineJobResponse]
     offer: List[PipelineJobResponse]
-    archived: List[PipelineJobResponse] = []
 
 
 def get_pipeline_job_response(pipeline_job: PipelineJob, db: Session) -> PipelineJobResponse:
@@ -148,8 +152,7 @@ def _fetch_posting_into(pipeline_job_id: int, url: str):
 @router.post("/add", status_code=201)
 def add_pipeline_job_manual(request: PipelineAddRequest, background: BackgroundTasks, db: Session = Depends(get_db)):
     """Manually add a job to the pipeline without a search result."""
-    valid_statuses = STATUSES
-    if request.status not in valid_statuses:
+    if request.status not in LIVE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status: {request.status}")
 
     # Find or create the company record
@@ -349,7 +352,7 @@ def pipeline_field(db: Session = Depends(get_db)):
             "has_suggestions": p["has_suggestions"], "has_letter": p["has_letter"],
             "has_posting": bool(pj.posting_text), "checklist": check,
         })
-    return {"version": _version(db), "items": items}
+    return {"version": _version(db), "items": items, "phased_out": phased_out_count(db)}
 
 
 @router.get("/{status}", response_model=List[PipelineJobResponse])
@@ -379,6 +382,16 @@ def update_pipeline_job(
     valid_statuses = STATUSES
     if request.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status: {request.status}")
+
+    if request.status == "rejected":
+        # Phased out: chewed. The answer describes the entry as it leaves.
+        if request.notes is not None:
+            pipeline_job.notes = request.notes
+        gone = get_pipeline_job_response(pipeline_job, db)
+        c = phase_out(db, pipeline_job)
+        db.commit()
+        return gone.copy(update={"status": "rejected", "chew_id": c.id,
+                                 "stage_changed_date": c.created_at.isoformat()})
 
     moved = pipeline_job.status != request.status
     pipeline_job.status = request.status

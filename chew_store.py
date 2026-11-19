@@ -2,7 +2,8 @@
 
 Three piles of postings George has given a verdict on:
   targets   in the Pipeline (pursued, applied and on: full weight; saved: half)
-  chewed    the right field, not a target
+  chewed    the right field, not a target: chewed in Survey, or phased out in the
+            Pipeline (phasing out is chewing; see phase_out)
   removed   wrong
 and two lists he controls: the suggestions he accepted (with what each has reached
 since: the loop's check on itself) and the ones he dismissed.
@@ -101,6 +102,57 @@ def load_sets(db: Session) -> Dict[str, List[dict]]:
                         "location_type": j.location_type if j else None, "track": _track(r.title),
                         "weight": chew.age_weight(_age(r.created_at, now))})
     return {"targets": targets, "chewed": chewed, "removed": removed}
+
+
+# ── Phasing out: the Pipeline's way of chewing ─────────────────────────────
+# A phased-out application is chewed: the right field, not a target (any more). It
+# leaves the Pipeline, its posting stays off Survey for good, and its text joins the
+# pile. The whole entry (dates, notes, Render's work) is kept in the chew's context,
+# so undoing the chew puts the application back exactly as it was, under the same id.
+PIPELINE_SOURCE = "pipeline"
+LIVE_STATUSES = ("saved", "applied", "interviewing", "offer")
+_ROW = ("id", "job_id", "company_id", "title", "location", "salary_range", "url", "status", "posting_text",
+        "posting_state", "work_json", "checklist_json", "saved_date", "applied_date", "stage_changed_date",
+        "notes", "created_at")
+_DATES = {"saved_date", "applied_date", "stage_changed_date", "created_at"}
+
+
+def phase_out(db: Session, pj: PipelineJob, when: Optional[datetime] = None) -> Chew:
+    """Chew a pipeline entry and take it out of the Pipeline. The caller commits."""
+    job = db.query(Job).filter(Job.id == pj.job_id).first() if pj.job_id else None
+    snap = {k: (getattr(pj, k).isoformat() if k in _DATES and getattr(pj, k) else getattr(pj, k)) for k in _ROW}
+    c = Chew(job_id=pj.job_id, company_id=pj.company_id, title=pj.title, url=pj.url or (job.url if job else None),
+             location=pj.location or (job.location if job else None),
+             location_type=job.location_type if job else None, posted_date=job.posted_date if job else None,
+             description=pj.posting_text or (job.description if job else None), source=PIPELINE_SOURCE,
+             context_json=json.dumps({"track": _track(pj.title), "phased_out_from": pj.status, "pipeline": snap}),
+             created_at=when or datetime.utcnow())
+    db.add(c)
+    db.delete(pj)
+    db.flush()
+    return c
+
+
+def restore(db: Session, c: Chew) -> Optional[PipelineJob]:
+    """Undo a phase-out: the application returns to the stage it left. The caller
+    deletes the chew and commits. None when the chew didn't come from the Pipeline."""
+    snap = json.loads(c.context_json or "{}").get("pipeline") if c.source == PIPELINE_SOURCE else None
+    if not snap:
+        return None
+    fields = {k: (datetime.fromisoformat(v) if k in _DATES and v else v) for k, v in snap.items() if k in _ROW}
+    if fields.get("status") not in LIVE_STATUSES:
+        # Phased out before phasing out chewed (an old Archived or Phased out entry).
+        fields["status"] = "applied" if fields.get("applied_date") else "saved"
+    if fields.get("id") and db.query(PipelineJob).filter(PipelineJob.id == fields["id"]).first():
+        fields.pop("id")          # the id was reused meanwhile: a new one, then
+    pj = PipelineJob(**fields)
+    db.add(pj)
+    db.flush()
+    return pj
+
+
+def phased_out_count(db: Session) -> int:
+    return db.query(Chew).filter(Chew.source == PIPELINE_SOURCE).count()
 
 
 def build_taste(sets: Dict[str, List[dict]]) -> chew.Taste:

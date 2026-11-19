@@ -194,10 +194,22 @@ def company_field(db: Session = Depends(get_db)):
             "changed": p.stage_changed_date.isoformat() if p.stage_changed_date else None,
         })
 
+    # Phased-out applications have been chewed and left the Pipeline, but the Overview
+    # still knows them: a company whose every application was phased out is "closed".
+    from models import Chew
+    from chew_store import PIPELINE_SOURCE
+    for c in db.query(Chew).filter(Chew.source == PIPELINE_SOURCE, Chew.company_id != None).order_by(Chew.created_at.desc()).all():
+        snap = json.loads(c.context_json or "{}").get("pipeline") or {}
+        apps.setdefault(c.company_id, []).append({
+            "id": None, "chew_id": c.id, "title": c.title, "url": c.url, "status": "rejected",
+            "applied_date": snap.get("applied_date"),
+            "changed": c.created_at.isoformat() if c.created_at else None,
+        })
+
     # The Pipeline is the record: a company with an application under way is drawn
     # even if the company itself was deleted in Landscape. (Deleted companies whose
-    # applications are all archived stay off the field.)
-    live_cids = {cid for cid, rows in apps.items() if any(a["status"] != "archived" for a in rows)}
+    # applications were all phased out stay off the field.)
+    live_cids = {cid for cid, rows in apps.items() if any(a["status"] != "rejected" for a in rows)}
     out = []
     for c in db.query(Company).all():
         if not c.is_active and c.id not in live_cids:
@@ -509,8 +521,8 @@ def delete_company(company_id: int, db: Session = Depends(get_db)):
     # A company with an application under way can't be deleted out from under it:
     # the Pipeline would keep the application and the Overview would lose its dot.
     from models import PipelineJob
-    live = db.query(PipelineJob).filter(PipelineJob.company_id == company_id, PipelineJob.status != "archived").count()
+    live = db.query(PipelineJob).filter(PipelineJob.company_id == company_id).count()
     if live:
-        raise HTTPException(status_code=409, detail=f"{db_company.name} has {live} application{'s' if live != 1 else ''} in the Pipeline. Archive {'them' if live != 1 else 'it'} there first, or Skip the company instead.")
+        raise HTTPException(status_code=409, detail=f"{db_company.name} has {live} application{'s' if live != 1 else ''} in the Pipeline. Phase {'them' if live != 1 else 'it'} out there first, or Skip the company instead.")
     db_company.is_active = False
     db.commit()

@@ -1,8 +1,10 @@
 """What Survey keeps when a posting is chewed, and what the pile teaches.
 
 Chew = "the right field, not a target": the posting leaves Survey for good and is
-never pursued; its full text is kept. Chewed postings only widen Survey's reach and
-enrich its results. Nothing here lowers a score or hides a posting.
+never pursued; its full text is kept. Phasing out an application in the Pipeline is
+the same act, later: the application leaves the Pipeline and joins the pile (source
+"pipeline"). Chewed postings only widen Survey's reach and enrich its results.
+Nothing here lowers a score or hides a posting.
 
 The pile is read three ways, with counted words and no model calls:
   widen_titles  role words in kept titles that the Profile doesn't search for yet

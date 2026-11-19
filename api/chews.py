@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from chew import Chewed
-from chew_store import ACCEPTED, DISMISSED, FIELD_FACET, TASTE, digest, field_facet, get_list, load_sets, put_list, _generation
+from chew_store import ACCEPTED, DISMISSED, FIELD_FACET, TASTE, digest, field_facet, get_list, load_sets, put_list, restore, _generation
 from database import SessionLocal, get_db
 from models import Chew, Company, Job, KeywordProfile, Setting
 from posting import quick_text
@@ -69,6 +69,7 @@ def list_chews(db: Session = Depends(get_db)):
     names = {c.id: c.name for c in db.query(Company).all()}
     return [{"id": c.id, "job_id": c.job_id, "title": c.title, "company": names.get(c.company_id),
              "url": c.url, "location": c.location, "has_text": bool((c.description or "").strip()),
+             "source": c.source or "survey",
              "chewed_at": c.created_at.isoformat() if c.created_at else None,
              "context": json.loads(c.context_json or "{}")}
             for c in db.query(Chew).order_by(Chew.created_at.desc(), Chew.id.desc()).all()]
@@ -160,9 +161,11 @@ def set_taste(body: TasteBody, db: Session = Depends(get_db)):
 
 @router.delete("/{chew_id}", status_code=204)
 def undo_chew(chew_id: int, db: Session = Depends(get_db)):
-    """Undo a chew: the posting returns to Survey."""
+    """Undo a chew: the posting returns to Survey. A phased-out application returns
+    to the Pipeline, at the stage it left, with everything it had."""
     c = db.query(Chew).filter(Chew.id == chew_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Chew not found")
+    restore(db, c)
     db.delete(c)
     db.commit()

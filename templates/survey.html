@@ -599,11 +599,12 @@
 
   // ── Where a posting stands in the pipeline ───────────────────────────
   // Once applied (or further), a posting is done here: no Pursue, no Save.
-  const DONE = { applied: 'Applied', interviewing: 'Interviewing', offer: 'Offer', rejected: 'Phased out', archived: 'Archived' };
+  // (A phased-out application is chewed, so its posting is no longer on the list.)
+  const DONE = { applied: 'Applied', interviewing: 'Interviewing', offer: 'Offer' };
   const shortDate = iso => iso ? new Date(iso.endsWith('Z') ? iso : iso + 'Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
   function doneLabel(j) {
     const d = DONE[j.pipeline_status]; if (!d) return '';
-    return ['rejected', 'archived'].includes(j.pipeline_status) ? d : `${d} ✓${j.applied_date ? ' ' + shortDate(j.applied_date) : ''}`;
+    return `${d} ✓${j.applied_date ? ' ' + shortDate(j.applied_date) : ''}`;
   }
   function actsFor(j) {
     const done = doneLabel(j);
@@ -694,7 +695,7 @@
   function chewedHtml(list, d) {
     const head = `<button type="button" class="sv-over-close" data-close>Close ×</button>
       <h2>Chewed</h2>
-      <p class="sv-cp-lede">Postings from the right field that aren't targets. They stay off the list and are never pursued. What they share widens what Survey looks for.</p>`;
+      <p class="sv-cp-lede">Postings from the right field that aren't targets: chewed here, or phased out in the Pipeline. They stay off the list and aren't pursued further. What they share widens what Survey looks for.</p>`;
     if (!d) return head + `<p class="sv-over-none">Couldn't read the pile.</p>`;
     const c = d.counts;
     const counts = `<p class="sv-over-meta">${plural(c.chewed, 'chewed', 'chewed')} · ${plural(c.targets, 'target', 'targets')} in the Pipeline · ${c.removed} removed</p>`;
@@ -727,7 +728,7 @@
       ${S.never_worth_reading.length ? `<p class="sv-cp-note">Read at length, with never a title worth reading: ${S.never_worth_reading.map(x => `${escH(x.company)} (${x.read} postings)`).join(', ')}. Pausing these in Landscape shortens a survey.</p>` : ''}`;
     const when = iso => iso ? new Date(iso.endsWith('Z') ? iso : iso + 'Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
     const items = list.length ? `<ul>${list.map(x => `<li><a href="${escH(x.url)}" target="_blank" rel="noopener">${escH(x.title)}</a>
-        <span class="sv-cp-meta">${escH(x.company || '')} · chewed ${when(x.chewed_at)}${x.context.score != null ? ` · ${x.context.score}% then` : ''}${x.context.rank ? `, ${x.context.rank} of ${x.context.of}` : ''}${x.has_text ? '' : ' · title only'}</span></li>`).join('')}</ul>`
+        <span class="sv-cp-meta">${escH(x.company || '')} · ${x.source === 'pipeline' ? `phased out ${when(x.chewed_at)}${x.context.phased_out_from === 'applied' || (x.context.pipeline || {}).applied_date ? ', after applying' : ''}` : `chewed ${when(x.chewed_at)}`}${x.context.score != null ? ` · ${x.context.score}% then` : ''}${x.context.rank ? `, ${x.context.rank} of ${x.context.of}` : ''}${x.has_text ? '' : ' · title only'}</span></li>`).join('')}</ul>`
       : `<p class="sv-cp-note">Nothing chewed yet. The half-circle beside a posting chews it.</p>`;
     return `${head}${counts}
       <h3>Role words to search for</h3>${titles}
